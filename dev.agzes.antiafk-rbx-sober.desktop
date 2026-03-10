@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=AntiAFK-RBX-Sober
+Comment=AntiAFK application for Sober on Linux
+Exec=antiafk-rbx-sober 
+Icon=dev.agzes.antiafk-rbx-sober
+Terminal=false
+Type=Application
+Categories=Game;Utility;
+StartupWMClass=dev.agzes.antiafk-rbx-sober
+Keywords=Roblox;Sober;AntiAFK;

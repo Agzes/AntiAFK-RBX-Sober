@@ -1,0 +1,13 @@
+/target
+debug
+target
+**/*.rs.bk
+**/mutants.out*/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Cargo.lock.bak
+inst/

@@ -1,0 +1,20 @@
+[package]
+name = "AntiAFK-RBX-Sober"
+version = "0.1.0"
+edition = "2024"
+description = "AntiAFK application for Sober (Roblox for Linux) on Linux"
+repository = "https://github.com/Agzes/AntiAFK-RBX-Sober"
+license = "MIT"
+keywords = ["roblox", "linux", "antiafk", "sober", "hyprland"]
+
+[dependencies]
+gtk = { version = "0.7", package = "gtk4", features = ["v4_10"] }
+glib = "0.18"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+evdev = "0.12"
+ksni = "0.2.2"
+clap = { version = "4.5", features = ["derive"] }
+image = "0.25"
+notify-rust = "4.11"
+dirs = "5.0"
