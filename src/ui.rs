@@ -9,7 +9,7 @@ use gtk::{
 };
 use std::process::Command;
 
-const CURRENT_VERSION: f32 = 0.1;
+const CURRENT_VERSION: &str = "0.1.0";
 
 const CSS: &str = "
     .main-window { background-color: @window_bg_color; }
@@ -266,7 +266,7 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     let btn_content = Box::new(Orientation::Horizontal, 4);
     btn_content.append(
         &Label::builder()
-            .label(format!("v{CURRENT_VERSION:.1}"))
+            .label(format!("v{CURRENT_VERSION}"))
             .build(),
     );
     let settings_icon = Image::from_icon_name("preferences-system-symbolic");
@@ -407,12 +407,12 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
 
     let (last_version, shown_warning) = {
         let s = state.lock().unwrap();
-        (s.last_run_version, s.shown_warning)
+        (s.last_run_version.clone(), s.shown_warning)
     };
 
     if !shown_warning {
         stack.set_visible_child_name("warning");
-    } else if last_version.is_none_or(|v| v < CURRENT_VERSION) {
+    } else if last_version.is_none_or(|v| v != CURRENT_VERSION) {
         refresh_compat();
     } else {
         stack.set_visible_child_name("main");
@@ -453,7 +453,7 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     );
     let core_list = ListBox::new();
     core_list.add_css_class("card");
-    let initial_state = { *state.lock().unwrap() };
+    let initial_state = { state.lock().unwrap().clone() };
     let mode_names = vec!["Swapper", "Other Desktops"];
     let is_hypr_detected = crate::backend::is_hyprland();
 
@@ -960,7 +960,7 @@ fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
                 match res {
                     Ok((version_ok, latest_v)) => {
                         let version_tutorial = if version_ok {
-                            format!("Current: v{CURRENT_VERSION:.1}. You have the latest version.")
+                            format!("Current: v{CURRENT_VERSION}. You have the latest version.")
                         } else {
                             format!("Update available: v{latest_v}. Visit GitHub to download.")
                         };
@@ -1214,7 +1214,7 @@ fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
     let state_clone = state.clone();
     continue_btn.connect_clicked(move |_| {
         let mut s = state_clone.lock().unwrap();
-        s.last_run_version = Some(CURRENT_VERSION);
+        s.last_run_version = Some(CURRENT_VERSION.to_string());
         s.save();
         stack_clone.set_visible_child_name("main");
     });
@@ -1235,8 +1235,8 @@ fn check_latest_version() -> Result<(bool, String), String> {
         && output.status.success()
     {
         let latest_v_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if let Ok(latest_v) = latest_v_str.parse::<f32>() {
-            return Ok((CURRENT_VERSION >= latest_v, latest_v_str));
+        if !latest_v_str.is_empty() {
+            return Ok((CURRENT_VERSION == latest_v_str, latest_v_str));
         }
     }
 

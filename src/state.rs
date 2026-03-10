@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 pub const APP_ID: &str = "dev.agzes.antiafk-rbx-sober";
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppState {
     pub running: bool,
     pub jump: bool,
@@ -22,7 +22,7 @@ pub struct AppState {
     pub fps_capper: bool,
     pub fps_limit: u32,
     pub stop_limit_on_focus: bool,
-    pub last_run_version: Option<f32>,
+    pub last_run_version: Option<String>,
     pub shown_warning: bool,
     #[serde(skip)]
     pub manually_stopped: bool,
@@ -81,7 +81,7 @@ impl AppState {
 
     pub fn save(&self) {
         if let Some(path) = Self::get_config_path() {
-            let mut state_to_save = *self;
+            let mut state_to_save = self.clone();
             state_to_save.running = false;
             if let Ok(data) = serde_json::to_string_pretty(&state_to_save) {
                 let _ = fs::write(path, data);

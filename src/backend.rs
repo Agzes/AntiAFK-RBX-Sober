@@ -191,7 +191,7 @@ pub fn start_backend(state: SharedState) {
 
     thread::spawn(move || {
         loop {
-            let current_state = { *state.lock().unwrap() };
+            let current_state = { state.lock().unwrap().clone() };
 
             if current_state.running {
                 let res = match current_state.mode {
@@ -218,7 +218,7 @@ fn run_window_focus_mode(state_arc: &SharedState) -> Result<(), String> {
     let mut mouse_device = create_mouse_device()?;
 
     loop {
-        let s = { *state_arc.lock().unwrap() };
+        let s = { state_arc.lock().unwrap().clone() };
         if !s.running || s.mode != 0 {
             break;
         }
@@ -698,7 +698,7 @@ fn responsive_sleep(state_arc: &SharedState, mode: usize) -> bool {
     let interval = { state_arc.lock().unwrap().interval_seq };
     for _ in 0..interval {
         thread::sleep(Duration::from_secs(1));
-        let s = { *state_arc.lock().unwrap() };
+        let s = { state_arc.lock().unwrap().clone() };
         if !s.running || s.mode != mode {
             return true;
         }
