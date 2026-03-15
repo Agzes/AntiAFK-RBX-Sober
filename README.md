@@ -33,8 +33,17 @@ Anti-AFK application specifically designed for **Sober** (Roblox on Linux). Curr
 
 ### 1. Download
 
-AppImage:
+- **AppImage**:
 Download the latest version from the [Releases](https://github.com/Agzes/AntiAFK-RBX-Sober/releases) page.
+
+- **[AUR](https://aur.archlinux.org/packages/antiafk-rbx-sober)**: 
+```bash
+yay -S antiafk-rbx-sober
+``` 
+or 
+```bash
+paru -S antiafk-rbx-sober 
+```
 
 
 ### 2. uinput Permissions
@@ -102,6 +111,14 @@ cargo build --release
 ```
 
 The compiled binary will be located at `target/release/AntiAFK-RBX-Sober`.
+
+## 🗑️ Correct uninstall 
+### AppImage:
+1. Remove `~/.local/share/applications/dev.agzes.antiafk-rbx-sober.desktop` 
+2. Remove the AppImage file.
+
+### AUR:
+1. Run `yay -Rns antiafk-rbx-sober` or `paru -Rns antiafk-rbx-sober`
 
 ## ⚠️ Important Note
 Currently, the **Swapper** mode (main functionality) only supports **Hyprland**. Support for other environments (GNOME, KDE, X11) is currently in development.
