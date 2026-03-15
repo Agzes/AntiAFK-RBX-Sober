@@ -131,7 +131,7 @@ fn install() -> Result<(), Box<dyn std::error::Error>> {
     let current_exe = std::env::current_exe()?;
     let target_exe = bin_dir.join("antiafk-rbx-sober");
 
-    if current_exe != target_exe {
+    if !target_exe.exists() || !files_match(&current_exe, &target_exe) {
         std::fs::copy(&current_exe, &target_exe)?;
         #[cfg(unix)]
         {
@@ -169,7 +169,82 @@ fn install() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+pub fn sync_binary() {
+    let current_exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(_) => return,
+    };
+
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return,
+    };
+
+    let target_bin = home.join(".local/bin/antiafk-rbx-sober");
+
+    if current_exe == target_bin {
+        return;
+    }
+
+    if target_bin.exists() {
+        if !files_match(&current_exe, &target_bin) {
+            println!("Updating binary in .local/bin...");
+            let _ = std::fs::copy(&current_exe, &target_bin);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &target_bin,
+                    std::fs::Permissions::from_mode(0o755),
+                );
+            }
+        }
+    }
+}
+
+fn files_match(p1: &std::path::Path, p2: &std::path::Path) -> bool {
+    let mut f1 = match std::fs::File::open(p1) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let mut f2 = match std::fs::File::open(p2) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+
+    let m1 = f1.metadata().ok();
+    let m2 = f2.metadata().ok();
+
+    if let (Some(m1), Some(m2)) = (m1, m2) {
+        if m1.len() != m2.len() {
+            return false;
+        }
+    }
+
+    use std::io::Read;
+    let mut b1 = [0; 8192];
+    let mut b2 = [0; 8192];
+
+    loop {
+        let n1 = f1.read(&mut b1).unwrap_or(0);
+        let n2 = f2.read(&mut b2).unwrap_or(0);
+
+        if n1 != n2 {
+            return false;
+        }
+        if n1 == 0 {
+            break;
+        }
+        if b1[..n1] != b2[..n1] {
+            return false;
+        }
+    }
+
+    true
+}
+
 fn main() -> glib::ExitCode {
+    sync_binary();
     let args = Args::parse();
 
     if args.install {
