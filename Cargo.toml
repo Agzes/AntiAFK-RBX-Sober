@@ -18,3 +18,10 @@ clap = { version = "4.5", features = ["derive"] }
 image = "0.25"
 notify-rust = "4.11"
 dirs = "5.0"
+
+[package.metadata.appimage]
+name = "AntiAFK-RBX-Sober"
+icon = "assets/logo.png"
+desktop_entry = "dev.agzes.antiafk-rbx-sober.desktop"
+auto_link = true
+category = "Utility"
