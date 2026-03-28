@@ -1,6 +1,6 @@
 [package]
 name = "AntiAFK-RBX-Sober"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "AntiAFK application for Sober (Roblox for Linux) on Linux"
 repository = "https://github.com/Agzes/AntiAFK-RBX-Sober"
