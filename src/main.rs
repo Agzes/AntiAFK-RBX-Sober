@@ -1,5 +1,6 @@
 mod backend;
 mod input;
+mod inputs;
 mod state;
 mod ui;
 

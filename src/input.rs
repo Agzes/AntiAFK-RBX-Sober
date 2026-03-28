@@ -9,6 +9,8 @@ pub fn create_keyboard_device() -> Result<VirtualDevice, String> {
     keys.insert(Key::KEY_A);
     keys.insert(Key::KEY_S);
     keys.insert(Key::KEY_D);
+    keys.insert(Key::KEY_I);
+    keys.insert(Key::KEY_O);
 
     VirtualDeviceBuilder::new()
         .map_err(|e: std::io::Error| e.to_string())?
@@ -16,7 +18,7 @@ pub fn create_keyboard_device() -> Result<VirtualDevice, String> {
         .with_keys(&keys)
         .map_err(|e: std::io::Error| e.to_string())?
         .build()
-        .map_err(|e: std::io::Error| format!("Creation failed: {e}. Check permissions."))
+        .map_err(|e: std::io::Error| format!("Keyboard creation failed: {e}. Run: sudo chmod 666 /dev/uinput"))
 }
 
 pub fn create_mouse_device() -> Result<VirtualDevice, String> {
@@ -35,7 +37,7 @@ pub fn create_mouse_device() -> Result<VirtualDevice, String> {
         .with_keys(&keys)
         .map_err(|e: std::io::Error| e.to_string())?
         .build()
-        .map_err(|e: std::io::Error| format!("Creation failed: {e}. Check permissions."))
+        .map_err(|e: std::io::Error| format!("Mouse creation failed: {e}. Check permissions."))
 }
 
 pub fn emit_key(device: &mut VirtualDevice, key: Key, pressed: bool) -> Result<(), std::io::Error> {

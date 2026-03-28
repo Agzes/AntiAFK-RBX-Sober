@@ -22,6 +22,7 @@ pub struct AppState {
     pub fps_capper: bool,
     pub fps_limit: u32,
     pub stop_limit_on_focus: bool,
+    pub stealth: bool,
     pub last_run_version: Option<String>,
     pub shown_warning: bool,
     #[serde(skip)]
@@ -47,6 +48,7 @@ impl Default for AppState {
             fps_capper: false,
             fps_limit: 30,
             stop_limit_on_focus: false,
+            stealth: false,
             last_run_version: None,
             shown_warning: false,
             manually_stopped: false,
@@ -69,14 +71,41 @@ impl AppState {
     }
 
     pub fn load() -> Self {
-        if let Some(path) = Self::get_config_path()
+        let mut state = if let Some(path) = Self::get_config_path()
             && let Ok(data) = fs::read_to_string(path)
             && let Ok(mut state) = serde_json::from_str::<AppState>(&data)
         {
             state.running = false;
-            return state;
+            state
+        } else {
+            Self::default()
+        };
+
+        let detected = Self::detect_de_mode();
+        state.mode = detected;
+
+        state
+    }
+
+    fn detect_de_mode() -> usize {
+        if Self::is_hyprland() {
+            0
+        } else if Self::is_plasma() {
+            1
+        } else {
+            2
         }
-        Self::default()
+    }
+
+    pub fn is_hyprland() -> bool {
+        std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok()
+    }
+
+    pub fn is_plasma() -> bool {
+        std::env::var("XDG_CURRENT_DESKTOP").map_or(false, |v| {
+            let v = v.to_uppercase();
+            v.contains("KDE") || v.contains("PLASMA")
+        }) || std::env::var("KDE_FULL_SESSION").is_ok()
     }
 
     pub fn save(&self) {

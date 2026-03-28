@@ -9,95 +9,93 @@ use gtk::{
 };
 use std::process::Command;
 
-const CURRENT_VERSION: &str = "0.1.0";
+const CURRENT_VERSION: &str = "0.2.0";
 
 const CSS: &str = "
-    .main-window { background-color: @window_bg_color; }
+    .main-window { background-color: @theme_bg_color; color: @theme_fg_color; }
     .main-box { padding: 20px; padding-bottom: 14px; }
     .header-box { margin-bottom: 20px; }
     .app-title { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
-    .version-btn {
-        font-size: 9px;
-        font-weight: bold;
-        padding: 1px 5px;
-        border-radius: 6px;
-        background-color: alpha(@window_fg_color, 0.1);
-        color: alpha(@window_fg_color, 0.6);
-        margin-left: 8px;
-        border: none;
-        min-height: 18px;
-    }
-    .version-btn:hover {
-        background-color: alpha(@window_fg_color, 0.2);
-        color: @window_fg_color;
-    }
-    .icon-btn {
-        padding: 0;
-        min-width: 22px;
-        min-height: 22px;
-        border-radius: 6px;
-    }
+    .version-btn { font-size: 9px; font-weight: bold; padding: 1px 5px; border-radius: 6px; background-color: alpha(@theme_fg_color, 0.08); color: @theme_fg_color; border: 1px solid alpha(@theme_fg_color, 0.12); margin-left: 8px; min-height: 18px; }
+    .version-btn:hover { background-color: alpha(@theme_fg_color, 0.15); border: 1px solid alpha(@theme_fg_color, 0.2); }
+    .icon-btn { padding: 0; min-width: 22px; min-height: 22px; border-radius: 6px; }
     .app-subtitle { font-size: 12px; margin-top: -2px; }
     .app-subtitle a, .badge-link a { color: inherit; text-decoration: none; font-weight: bold; }
     .app-subtitle a:hover { opacity: 1.0; text-decoration: underline; }
     .section-title { font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.5; }
-    .card { background-color: alpha(@window_fg_color, 0.03); border: 1px solid alpha(@window_fg_color, 0.08); border-radius: 12px; overflow: hidden; }
-    list { background-color: transparent; }
-    row { padding: 8px 14px; border-bottom: 1px solid alpha(@window_fg_color, 0.04); }
+    .card { background-color: alpha(@theme_fg_color, 0.04); border: 1px solid alpha(@theme_fg_color, 0.08); border-radius: 12px; }
+    list { background-color: transparent; border-radius: 12px; }
+    row { padding: 8px 14px; border-bottom: 1px solid alpha(@theme_fg_color, 0.05); }
+    row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+    row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: none; }
     row label.row-title { font-weight: 500; font-size: 14px; }
     row label.row-subtitle { font-size: 11px; opacity: 0.5; }
     row.sub-row > box { margin-left: 20px; opacity: 0.85; }
     row.sub-row label.row-title { font-size: 13px; }
     .info-icon { opacity: 0.4; }
     .info-icon:hover { opacity: 0.9; }
-    .badge-link { padding: 2px 6px; border-radius: 6px; font-size: 9px; font-weight: 800; background-color: alpha(@window_fg_color, 0.06); color: alpha(@window_fg_color, 0.5); }
-    .badge-link:hover { background-color: alpha(@window_fg_color, 0.12); color: @window_fg_color; }
+    .badge-link { padding: 2px 6px; border-radius: 6px; font-size: 9px; font-weight: 800; background-color: alpha(@theme_fg_color, 0.08); color: alpha(@theme_fg_color, 0.8); border: 1px solid alpha(@theme_fg_color, 0.12); }
+    .badge-link:hover { background-color: alpha(@theme_fg_color, 0.15); border: 1px solid alpha(@theme_fg_color, 0.2); }
     .beta-badge { font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 5px; background-color: #f5c71a; color: #000; margin-left: 0px; }
     dropdown button { padding: 0 6px; min-height: 26px; font-size: 12px; border-radius: 6px; }
-    spinbutton { min-height: 26px; font-size: 12px; border-radius: 6px; padding: 0; }
-    spinbutton button { padding: 0 4px; min-height: 22px; }
-    switch { margin: 0; transform: scale(0.85); }
-    .start-button, .stop-button { border-radius: 12px; padding: 12px; font-weight: 800; font-size: 14px; border: none; transition: all 200ms ease; margin-bottom: 10px; }
-    .start-button { background-color: #8fde58; color: #1a3300; box-shadow: 0 4px 0px #6eb03d; }
-    .start-button:hover { background-color: #9fef68; transform: translateY(-2px); box-shadow: 0 6px 0px #6eb03d; }
-    .start-button:active { transform: translateY(2px); box-shadow: 0 2px 0px #6eb03d; }
-    .stop-button { background-color: #ff5555; color: white; box-shadow: 0 4px 0px #cc0000; }
-    .stop-button:hover { background-color: #ff6666; transform: translateY(-2px); box-shadow: 0 6px 0px #cc0000; }
-    .stop-button:active { transform: translateY(2px); box-shadow: 0 2px 0px #cc0000; }
-    .status-badge { padding: 2px 8px; border-radius: 8px; font-size: 9px; font-weight: 800; text-align: center; }
-    .status-badge.active { background-color: alpha(#8fde58, 0.2); color: #8fde58; }
-    .status-badge.inactive { background-color: alpha(@window_fg_color, 0.1); color: alpha(@window_fg_color, 0.6); }
-
+    .clean-dropdown, dropdown.clean-dropdown { background-color: transparent; border: none; box-shadow: none; padding: 0; margin: 0; outline: none; }
+    .clean-dropdown button, dropdown.clean-dropdown button.combo { background-color: alpha(@theme_fg_color, 0.08); border: 1px solid alpha(@theme_fg_color, 0.12); border-radius: 8px; padding: 0 10px; min-height: 24px; color: @theme_fg_color; margin: 0; box-shadow: none; outline: none; }
+    .clean-dropdown button *, dropdown.clean-dropdown button.combo * { background-color: transparent; border: none; box-shadow: none; }
+    .clean-dropdown button label, dropdown.clean-dropdown button.combo label { margin: 0; padding: 0; }
+    .clean-dropdown button image, dropdown.clean-dropdown button.combo image { margin-left: 14px; }
+    .clean-dropdown button > box, dropdown.clean-dropdown button.combo > box { spacing: 14px; column-gap: 14px; }
+    .clean-dropdown button:hover, dropdown.clean-dropdown button.combo:hover { background-color: alpha(@theme_fg_color, 0.12); border: 1px solid alpha(@theme_fg_color, 0.2); }
+    popover contents { background-color: @theme_bg_color; border: 1px solid alpha(@theme_fg_color, 0.15); border-radius: 20px; padding: 6px; color: @theme_fg_color; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    popover listview, popover list { background-color: transparent; }
+    popover listitem, popover row { padding: 8px 12px; border-radius: 10px; margin: 2px; transition: all 150ms ease; }
+    popover listitem:hover, popover row:hover { background-color: alpha(@theme_fg_color, 0.08); }
+    popover listitem:selected, popover row:selected { background-color: alpha(@theme_selected_bg_color, 0.35); color: @theme_fg_color; }
+    spinbutton { min-height: 26px; font-size: 12px; border-radius: 6px; padding: 0; background-color: alpha(@theme_fg_color, 0.05); border: 1px solid alpha(@theme_fg_color, 0.1); }
+    spinbutton button { background: none; border: none; padding: 0 4px; min-height: 22px; box-shadow: none; }
+    spinbutton button:hover { background-color: alpha(@theme_fg_color, 0.05); }
+    switch { margin: 0; transform: scale(0.85); outline: none; }
+    .start-button, .stop-button { border-radius: 12px; padding: 12px; font-weight: 800; font-size: 14px; border: none; transition: all 200ms ease; margin-bottom: 10px; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    .start-button { background-image: linear-gradient(to bottom, #2ecc71, #27ae60); box-shadow: 0 4px 0px #1e8449, 0 8px 15px -3px rgba(0,0,0,0.2); }
+    .stop-button { background-image: linear-gradient(to bottom, #e74c3c, #c0392b); box-shadow: 0 4px 0px #922b21, 0 8px 15px -3px rgba(0,0,0,0.2); }
+    .start-button:hover, .stop-button:hover { transform: translateY(-2px); }
+    .start-button:hover { background-image: linear-gradient(to bottom, #34e07e, #2ecc71); box-shadow: 0 6px 0px #1e8449, 0 12px 20px -3px rgba(0,0,0,0.25); }
+    .stop-button:hover { background-image: linear-gradient(to bottom, #ff5e4d, #e74c3c); box-shadow: 0 6px 0px #922b21, 0 12px 20px -3px rgba(0,0,0,0.25); }
+    .start-button:active, .stop-button:active { transform: translateY(2px); }
+    .start-button:active { box-shadow: 0 2px 0px #1e8449; }
+    .stop-button:active { box-shadow: 0 2px 0px #922b21; }
+    .status-badge { padding: 2px 6px; border-radius: 6px; font-size: 9px; font-weight: 800; }
+    .status-badge.active { background-color: rgba(46, 204, 113, 0.25); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); }
+    .status-badge.inactive { background-color: alpha(@theme_fg_color, 0.08); color: @theme_fg_color; border: 1px solid alpha(@theme_fg_color, 0.12); }
     .compat-box { padding: 0px; }
-    .compat-item { padding: 12px; border-radius: 12px; background: alpha(@window_fg_color, 0.03); border: 1px solid alpha(@window_fg_color, 0.06); margin-bottom: 8px; }
-    .compat-item.error { border-left: 4px solid #ff5555; }
-    .compat-item.ok { border-left: 4px solid #8fde58; }
-    .compat-item.warning-item { border-left: 4px solid #f5c71a; }
-    .compat-item.info-item { border-left: 4px solid #3584e4; }
+    .compat-item { padding: 12px; border-radius: 12px; background: alpha(@theme_fg_color, 0.03); border: 1px solid alpha(@theme_fg_color, 0.06); margin-bottom: 8px; }
+    .compat-item.error { border-left: 4px solid @error_color; background: alpha(@error_color, 0.1); }
+    .compat-item.ok { border-left: 4px solid @success_color; background: alpha(@success_color, 0.1); }
+    .compat-item.warning-item { border-left: 4px solid @warning_color; background: alpha(@warning_color, 0.1); }
+    .compat-item.info-item { border-left: 4px solid @theme_selected_bg_color; background: alpha(@theme_selected_bg_color, 0.1); }
     .tutorial-text { font-size: 11px; opacity: 0.6; margin-top: 4px; }
     .compat-title { font-size: 16px; font-weight: 800; margin-bottom: 16px; opacity: 0.9; }
     .compat-name { font-size: 13px; font-weight: bold; }
     .welcome-title { font-size: 32px; font-weight: 800; letter-spacing: -1px; }
     .welcome-subtitle { font-size: 16px; margin-bottom: 20px; }
-    .hypr-badge {
-        background-color: #ff5555;
-        color: white;
-        padding: 6px 14px;
-        border-radius: 99px;
-        font-size: 11px;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 12px;
-    }
-    .info-note {
-        background-color: alpha(@window_fg_color, 0.03);
-        border: 1px solid alpha(@window_fg_color, 0.07);
-        padding: 20px;
-        border-radius: 16px;
-        margin: 10px 0;
-    }
+    .hypr-badge { background-color: alpha(@error_color, 0.2); color: @error_color; padding: 6px 14px; border-radius: 99px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .info-note { background-color: alpha(@theme_fg_color, 0.03); border: 1px solid alpha(@theme_fg_color, 0.07); padding: 20px; border-radius: 16px; margin: 10px 0; }
+    .rbx-text { color: #E2231A; }
+    .sober-text { color: #8fde58; }
+    .error-text { color: @error_color; }
+    .success-text { color: @success_color; }
+    .warning-text { color: @warning_color; }
+    .small-text { font-size: 11px; }
+
 ";
+
+fn get_safe_icon(names: &[&str]) -> Image {
+    for name in names {
+        if gtk::IconTheme::for_display(&gtk::gdk::Display::default().unwrap()).has_icon(name) {
+            return Image::from_icon_name(name);
+        }
+    }
+    Image::from_icon_name("image-missing")
+}
 
 fn check_uinput_permission() -> bool {
     std::fs::OpenOptions::new()
@@ -125,9 +123,14 @@ fn create_row(
     let title_hbox = Box::new(Orientation::Horizontal, 4);
     title_hbox.set_valign(Align::Center);
     if let Some(txt) = info_text {
-        let info_img = Image::from_icon_name("info-symbolic");
+        let info_img = get_safe_icon(&[
+            "info-symbolic",
+            "help-info-symbolic",
+            "dialog-information-symbolic",
+        ]);
         info_img.add_css_class("info-icon");
         info_img.set_tooltip_text(Some(txt));
+        info_img.set_property("name", "row-info-icon");
         title_hbox.append(&info_img);
     }
     let display_title = if is_sub {
@@ -143,13 +146,12 @@ fn create_row(
             .build(),
     );
     if is_beta {
-        title_hbox.append(
-            &Label::builder()
-                .label("BETA")
-                .css_classes(["beta-badge"])
-                .valign(Align::Center)
-                .build(),
-        );
+        let beta_lbl = Label::builder()
+            .label("BETA")
+            .css_classes(["beta-badge"])
+            .valign(Align::Center)
+            .build();
+        title_hbox.append(&beta_lbl);
     }
     text_vbox.append(&title_hbox);
     if let Some(sub) = subtitle {
@@ -187,6 +189,7 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         .default_height(580)
         .resizable(false)
         .build();
+    window.add_css_class("main-window");
     window.set_icon_name(Some(crate::state::APP_ID));
 
     let root_vbox = Box::new(Orientation::Vertical, 0);
@@ -251,11 +254,15 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     title_hbox.set_valign(Align::Center);
     title_hbox.append(
         &Label::builder()
-            .use_markup(true)
-            .label("AntiAFK-<span color='#E2231A'>RBX</span>")
+            .label("AntiAFK-")
             .css_classes(["app-title"])
             .build(),
     );
+    let rbx_label = Label::builder()
+        .label("RBX")
+        .css_classes(["app-title", "rbx-text"])
+        .build();
+    title_hbox.append(&rbx_label);
 
     let combined_btn = Button::builder()
         .css_classes(["version-btn"])
@@ -269,7 +276,11 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
             .label(format!("v{CURRENT_VERSION}"))
             .build(),
     );
-    let settings_icon = Image::from_icon_name("preferences-system-symbolic");
+    let settings_icon = get_safe_icon(&[
+        "preferences-system-symbolic",
+        "emblem-system-symbolic",
+        "settings-symbolic",
+    ]);
     settings_icon.set_pixel_size(15);
     btn_content.append(&settings_icon);
     combined_btn.set_child(Some(&btn_content));
@@ -277,7 +288,22 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     title_hbox.append(&combined_btn);
 
     title_vbox.append(&title_hbox);
-    title_vbox.append(&Label::builder().use_markup(true).label("<b><span color='#8fde58'>Sober</span> Edition</b> • by <a href='https://github.com/agzes'>agzes</a>").halign(Align::Start).css_classes(["app-subtitle"]).build());
+    let sober_label = Label::builder()
+        .use_markup(true)
+        .label("<b>Sober Edition</b>")
+        .halign(Align::Start)
+        .css_classes(["app-subtitle", "sober-text"])
+        .build();
+    let by_label = Label::builder()
+        .use_markup(true)
+        .label(" • by <a href='https://github.com/agzes'>agzes</a>")
+        .halign(Align::Start)
+        .css_classes(["app-subtitle"])
+        .build();
+    let sub_hbox = Box::new(Orientation::Horizontal, 0);
+    sub_hbox.append(&sober_label);
+    sub_hbox.append(&by_label);
+    title_vbox.append(&sub_hbox);
     header_box.append(&title_vbox);
     let filler = Box::new(Orientation::Horizontal, 0);
     filler.set_hexpand(true);
@@ -323,23 +349,36 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
 
     warning_vbox.append(&Box::builder().height_request(80).build());
 
-    let welcome_icon = Image::from_icon_name("dialog-warning-symbolic");
+    let welcome_icon = get_safe_icon(&[
+        "dialog-warning-symbolic",
+        "emblem-important-symbolic",
+        "warning-symbolic",
+    ]);
     welcome_icon.set_pixel_size(80);
     welcome_icon.set_margin_bottom(20);
     welcome_icon.set_halign(Align::Center);
     warning_vbox.append(&welcome_icon);
 
-    let w_title = Label::builder()
-        .use_markup(true)
-        .label("AntiAFK-<span color='#E2231A'>RBX</span>")
-        .css_classes(["welcome-title"])
-        .halign(Align::Center)
-        .build();
-    warning_vbox.append(&w_title);
+    let w_title_hbox = Box::new(Orientation::Horizontal, 0);
+    w_title_hbox.set_halign(Align::Center);
+    w_title_hbox.append(
+        &Label::builder()
+            .label("AntiAFK-")
+            .css_classes(["welcome-title"])
+            .build(),
+    );
+    w_title_hbox.append(
+        &Label::builder()
+            .label("RBX")
+            .css_classes(["welcome-title", "rbx-text"])
+            .build(),
+    );
+    warning_vbox.append(&w_title_hbox);
+
     let w_sub = Label::builder()
         .use_markup(true)
-        .label("<b><span color='#8fde58'>Sober</span> Edition</b>")
-        .css_classes(["welcome-subtitle"])
+        .label("<b>Sober Edition</b>")
+        .css_classes(["welcome-subtitle", "sober-text"])
         .halign(Align::Center)
         .build();
     warning_vbox.append(&w_sub);
@@ -351,10 +390,10 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     let note_text = Label::builder()
         .use_markup(true)
         .label(
-            "<span size='large' weight='800'>Hyprland Only • WIP</span>\n\n\
+            "<span size='large' weight='800'>Wayland Only • WIP</span>\n\n\
         This project is currently a <b>Work In Progress</b>.\n\
-        It works <b>ONLY</b> on Hyprland via hyprctl dispatch.\n\
-        GNOME, KDE, and X11 are <b>not</b> supported yet.",
+        It works on <b>Hyprland</b> and <b>KDE Plasma 6 (Wayland)</b>.\n\
+        GNOME, X11 and other are <b>not</b> supported yet.",
         )
         .justify(gtk::Justification::Center)
         .build();
@@ -426,20 +465,20 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     btn_container.append(&toggle_button);
 
     let mode_warning = Label::builder()
-        .use_markup(true)
-        .label("<span size='small' color='#ff5555'>⚠ Selected method is not supported in your desktop.</span>")
+        .label("⚠ Selected method is not supported in your desktop.")
         .visible(false)
         .margin_bottom(6)
+        .css_classes(["error-text", "small-text"])
         .build();
     btn_container.append(&mode_warning);
 
     let perm_warning = Label::builder()
-        .use_markup(true)
-        .label("<span size='small' color='#ff5555'>⚠ Permission Denied: Run sudo chmod 666 /dev/uinput</span>")
+        .label("⚠ Permission Denied: Run sudo chmod 666 /dev/uinput")
         .halign(Align::Center)
         .wrap(true)
         .margin_bottom(12)
         .visible(!check_uinput_permission())
+        .css_classes(["error-text", "small-text"])
         .build();
     btn_container.append(&perm_warning);
 
@@ -454,8 +493,9 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     let core_list = ListBox::new();
     core_list.add_css_class("card");
     let initial_state = { state.lock().unwrap().clone() };
-    let mode_names = vec!["Swapper", "Other Desktops"];
+    let mode_names = vec!["Swapper", "Plasma (preview)", "Other Desktops"];
     let is_hypr_detected = crate::backend::is_hyprland();
+    let is_plasma_detected = crate::backend::is_plasma();
 
     let list_factory = gtk::SignalListItemFactory::new();
     list_factory.connect_setup(move |_, list_item| {
@@ -506,9 +546,21 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
                     "<span size='smaller' color='#ff5555' weight='bold'>Not supported</span>",
                 );
             }
+        } else if pos == 1 {
+            title.set_markup("<b>Plasma (preview)</b>");
+            subtitle.set_label("Desktops: KDE Plasma 6");
+            if is_plasma_detected {
+                wip.set_markup(
+                    "<span size='smaller' color='#8fde58' weight='bold'>Recommended</span>",
+                );
+            } else {
+                wip.set_markup(
+                    "<span size='smaller' color='#ff5555' weight='bold'>Not supported</span>",
+                );
+            }
         } else {
             title.set_markup("<b>Other Environments</b>");
-            subtitle.set_label("GNOME, KDE, X11");
+            subtitle.set_label("GNOME, X11");
             wip.set_markup(
                 "<span size='smaller' color='#ff5555' weight='bold'>WIP / Planned</span>",
             );
@@ -529,6 +581,8 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         let pos = item.position();
         if pos == 0 {
             label.set_label("Swapper");
+        } else if pos == 1 {
+            label.set_label("Plasma (preview)");
         } else {
             label.set_label("Other (WIP)");
         }
@@ -540,6 +594,7 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         .list_factory(&list_factory)
         .selected(initial_state.mode as u32)
         .build();
+    mode_dropdown.add_css_class("clean-dropdown");
 
     let mode_info =
         "Methods of performing actions and simulating user activity in the game windows.";
@@ -567,6 +622,7 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         ]))
         .selected(action_idx)
         .build();
+    action_dropdown.add_css_class("clean-dropdown");
     let (row, _) = create_row(
         "AFK Action",
         Some("Select character action"),
@@ -624,15 +680,15 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     auto_list.append(&row);
     let user_safe_sw = Switch::new();
     user_safe_sw.set_active(initial_state.user_safe);
-    let (row, _) = create_row(
+    let (user_safe_row, _) = create_row(
         "User-Safe",
         Some("Pause action on activity"),
         &user_safe_sw,
-        None,
-        false,
+        Some("Note: Plasma only detects cursor movement"),
+        true,
         false,
     );
-    auto_list.append(&row);
+    auto_list.append(&user_safe_row);
     let multi_instance_sw = Switch::new();
     multi_instance_sw.set_active(initial_state.multi_instance);
     let (row, _) = create_row(
@@ -644,6 +700,18 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         false,
     );
     auto_list.append(&row);
+
+    let stealth_sw = Switch::new();
+    stealth_sw.set_active(initial_state.stealth);
+    let (stealth_row, _) = create_row(
+        "Stealth Mode",
+        Some("Minimize window after actions"),
+        &stealth_sw,
+        None,
+        false,
+        false,
+    );
+    auto_list.append(&stealth_row);
     let reconnect_sw = Switch::new();
     reconnect_sw.set_active(initial_state.auto_reconnect);
     let (row, _) = create_row(
@@ -655,17 +723,7 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         false,
     );
     auto_list.append(&row);
-    let hides_game_sw = Switch::new();
-    hides_game_sw.set_active(initial_state.hides_game);
-    let (row, _) = create_row(
-        "Stealth Mode",
-        Some("Hide window during action"),
-        &hides_game_sw,
-        None,
-        false,
-        false,
-    );
-    auto_list.append(&row);
+
     let fps_capper_sw = Switch::new();
     fps_capper_sw.set_active(initial_state.fps_capper);
     let (row, _) = create_row(
@@ -729,38 +787,44 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     });
     main_vbox.append(&auto_list);
 
-    let state_live = state.clone();
-    let mode_dd_live = mode_dropdown.clone();
-    let action_dd_live = action_dropdown.clone();
-    let interval_spin_live = interval_spin.clone();
-    let auto_start_live = auto_start_sw.clone();
-    let multi_instance_live = multi_instance_sw.clone();
-    let hides_game_live = hides_game_sw.clone();
-    let user_safe_live = user_safe_sw.clone();
-    let auto_reconnect_live = reconnect_sw.clone();
-    let fps_capper_live = fps_capper_sw.clone();
-    let fps_limit_live = fps_limit_spin.clone();
-    let stop_limit_on_focus_live = unlock_focus_sw.clone();
-    let update_state = move || {
-        let mut s = state_live.lock().unwrap();
-        s.mode = mode_dd_live.selected() as usize;
-        let action_idx = action_dd_live.selected();
-        s.jump = action_idx == 0;
-        s.walk = action_idx == 1;
-        s.spin_jiggle = action_idx == 2;
-        s.interval_seq = interval_spin_live.value() as u64;
-        if auto_start_live.is_active() && !s.auto_start {
-            s.manually_stopped = false;
+    let stealth_live = stealth_sw.clone();
+    let update_state = {
+        let state_arc = state.clone();
+        let mode_dd_live = mode_dropdown.clone();
+        let interval_spin_live = interval_spin.clone();
+        let action_dd_live = action_dropdown.clone();
+        let auto_start_live = auto_start_sw.clone();
+        let multi_instance_live = multi_instance_sw.clone();
+        let stealth_live = stealth_live.clone();
+        let user_safe_live = user_safe_sw.clone();
+        let auto_reconnect_live = reconnect_sw.clone();
+        let fps_capper_live = fps_capper_sw.clone();
+        let fps_limit_live = fps_limit_spin.clone();
+        let stop_limit_on_focus_live = unlock_focus_sw.clone();
+
+        move || {
+            let mut s = state_arc.lock().unwrap();
+            s.mode = mode_dd_live.selected() as usize;
+            let action_idx = action_dd_live.selected();
+            s.jump = action_idx == 0;
+            s.walk = action_idx == 1;
+            s.spin_jiggle = action_idx == 2;
+            s.interval_seq = interval_spin_live.value() as u64;
+            if auto_start_live.is_active() && !s.auto_start {
+                s.manually_stopped = false;
+            }
+            s.auto_start = auto_start_live.is_active();
+            s.multi_instance = multi_instance_live.is_active();
+            let st = stealth_live.is_active();
+            s.stealth = st;
+            s.hides_game = st;
+            s.user_safe = user_safe_live.is_active();
+            s.auto_reconnect = auto_reconnect_live.is_active();
+            s.fps_capper = fps_capper_live.is_active();
+            s.fps_limit = fps_limit_live.value() as u32;
+            s.stop_limit_on_focus = stop_limit_on_focus_live.is_active();
+            s.save();
         }
-        s.auto_start = auto_start_live.is_active();
-        s.multi_instance = multi_instance_live.is_active();
-        s.hides_game = hides_game_live.is_active();
-        s.user_safe = user_safe_live.is_active();
-        s.auto_reconnect = auto_reconnect_live.is_active();
-        s.fps_capper = fps_capper_live.is_active();
-        s.fps_limit = fps_limit_live.value() as u32;
-        s.stop_limit_on_focus = stop_limit_on_focus_live.is_active();
-        s.save();
     };
 
     let us = update_state.clone();
@@ -779,8 +843,9 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         us();
         glib::Propagation::Proceed
     });
+
     let us = update_state.clone();
-    hides_game_sw.connect_state_set(move |_, _| {
+    stealth_sw.connect_state_set(move |_, _| {
         us();
         glib::Propagation::Proceed
     });
@@ -807,16 +872,13 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         glib::Propagation::Proceed
     });
 
-    let state_sync = state.clone();
-    let btn_sync = toggle_button.clone();
-    let status_badge_sync = status_badge.clone();
     let controls: Vec<gtk::Widget> = vec![
         mode_dropdown.clone().upcast::<gtk::Widget>(),
         action_dropdown.clone().upcast::<gtk::Widget>(),
         interval_spin.clone().upcast::<gtk::Widget>(),
         auto_start_sw.clone().upcast::<gtk::Widget>(),
         multi_instance_sw.clone().upcast::<gtk::Widget>(),
-        hides_game_sw.clone().upcast::<gtk::Widget>(),
+        stealth_sw.clone().upcast::<gtk::Widget>(),
         user_safe_sw.clone().upcast::<gtk::Widget>(),
         reconnect_sw.clone().upcast::<gtk::Widget>(),
         fps_capper_sw.clone().upcast::<gtk::Widget>(),
@@ -824,73 +886,115 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         unlock_focus_widget.clone().upcast::<gtk::Widget>(),
     ];
 
-    glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
-        let is_running = state_sync.lock().unwrap().running;
-        let btn_is_stop = btn_sync.label().is_some_and(|l| l.contains("Stop"));
-        if is_running != btn_is_stop {
-            if is_running {
-                btn_sync.set_label("Stop Anti-AFK");
-                btn_sync.add_css_class("stop-button");
-                btn_sync.remove_css_class("start-button");
-                status_badge_sync.set_label("ACTIVE");
-                status_badge_sync.add_css_class("active");
-                status_badge_sync.remove_css_class("inactive");
-                for c in &controls {
-                    c.set_sensitive(false);
-                }
-            } else {
-                btn_sync.set_label("Start Anti-AFK");
-                btn_sync.add_css_class("start-button");
-                btn_sync.remove_css_class("stop-button");
-                status_badge_sync.set_label("IDLE");
-                status_badge_sync.add_css_class("inactive");
-                status_badge_sync.remove_css_class("active");
-                for c in &controls {
-                    c.set_sensitive(true);
+    let update_controls = {
+        let btn_sync = toggle_button.clone();
+        let status_badge_sync = status_badge.clone();
+        let controls = controls.clone();
+        let state_sync = state.clone();
+        move || {
+            let (is_running, action_active) = {
+                let s = state_sync.lock().unwrap();
+                (s.running, s.action_active)
+            };
+            let btn_is_stop = btn_sync.label().is_some_and(|l| l.contains("Stop"));
+            if is_running != btn_is_stop {
+                if is_running {
+                    btn_sync.set_label("Stop Anti-AFK");
+                    btn_sync.add_css_class("stop-button");
+                    btn_sync.remove_css_class("start-button");
+                    status_badge_sync.set_label("ACTIVE");
+                    status_badge_sync.add_css_class("active");
+                    status_badge_sync.remove_css_class("inactive");
+                } else {
+                    btn_sync.set_label("Start Anti-AFK");
+                    btn_sync.add_css_class("start-button");
+                    btn_sync.remove_css_class("stop-button");
+                    status_badge_sync.set_label("IDLE");
+                    status_badge_sync.add_css_class("inactive");
+                    status_badge_sync.remove_css_class("active");
                 }
             }
+            for c in &controls {
+                c.set_sensitive(!is_running && !action_active);
+            }
+            glib::ControlFlow::Continue
         }
-        glib::ControlFlow::Continue
-    });
+    };
 
+    let uc_manual = update_controls.clone();
     let state_manual = state.clone();
     toggle_button.connect_clicked(move |_| {
         let mut s = state_manual.lock().unwrap();
         s.running = !s.running;
         s.manually_stopped = !s.running;
+        drop(s);
+        uc_manual();
     });
+
+    glib::timeout_add_local(std::time::Duration::from_millis(500), update_controls);
 
     let toggle_btn_restrict = toggle_button.clone();
     let mode_warn_restrict = mode_warning.clone();
     let perm_warn_restrict = perm_warning.clone();
-    let hides_game_restrict = hides_game_sw.clone();
     let multi_instance_restrict = multi_instance_sw.clone();
     let user_safe_restrict = user_safe_sw.clone();
     let reconnect_restrict = reconnect_sw.clone();
     let is_hyprland = crate::backend::is_hyprland();
+    let is_plasma = crate::backend::is_plasma();
 
+    let user_safe_row_live = user_safe_row.clone();
+    let stealth_row_live = stealth_row.clone();
     let update_mode_ui = move |selected_idx: u32| {
+        let user_safe_row = user_safe_row_live.clone();
+        let stealth_row = stealth_row_live.clone();
         let is_swapper = selected_idx == 0;
-        let is_other = selected_idx == 1;
+        let is_plasma_mode = selected_idx == 1;
+        let is_other = selected_idx == 2;
         let has_uinput = check_uinput_permission();
 
         perm_warn_restrict.set_visible(!has_uinput);
 
-        let mut invalid = !is_hyprland;
-        if is_other {
+        let mut invalid = false;
+        if is_swapper && !is_hyprland {
+            invalid = true;
+            mode_warn_restrict.set_markup("<span size='small' color='#ff5555'>⚠ Swapper requires Hyprland. Your desktop is not supported.</span>");
+        } else if is_plasma_mode && !is_plasma {
+            invalid = true;
+            mode_warn_restrict.set_markup("<span size='small' color='#ff5555'>⚠ Plasma (preview) requires KDE Plasma 6. Your desktop is not supported.</span>");
+        } else if is_other {
             invalid = true;
             mode_warn_restrict.set_markup("<span size='small' color='#ff5555'>⚠ This method is in development (WIP) and cannot be started.</span>");
-        } else if !is_hyprland {
-            mode_warn_restrict.set_markup("<span size='small' color='#ff5555'>⚠ Swapper requires Hyprland. Your desktop is not supported.</span>");
         }
 
         mode_warn_restrict.set_visible(invalid);
         toggle_btn_restrict.set_sensitive(!invalid && has_uinput);
 
-        hides_game_restrict.set_sensitive(is_swapper);
-        multi_instance_restrict.set_sensitive(is_swapper);
-        user_safe_restrict.set_sensitive(is_swapper);
-        reconnect_restrict.set_sensitive(is_swapper);
+        multi_instance_restrict.set_sensitive(is_swapper || is_plasma_mode);
+        user_safe_restrict.set_sensitive(is_swapper || is_plasma_mode);
+        stealth_row.set_sensitive(is_swapper || is_plasma_mode);
+
+        let mut curr = user_safe_row.first_child();
+        while let Some(c1) = curr {
+            let mut curr2 = c1.first_child();
+            while let Some(c2) = curr2 {
+                let mut curr3 = c2.first_child();
+                while let Some(c3) = curr3 {
+                    let mut curr4 = c3.first_child();
+                    while let Some(c4) = curr4 {
+                        let name = c4.widget_name();
+                        if name == "row-info-icon" || name == "row-beta-badge" {
+                            c4.set_visible(is_plasma_mode);
+                        }
+                        curr4 = c4.next_sibling();
+                    }
+                    curr3 = c3.next_sibling();
+                }
+                curr2 = c2.next_sibling();
+            }
+            curr = c1.next_sibling();
+        }
+
+        reconnect_restrict.set_sensitive(is_swapper || is_plasma_mode);
     };
 
     let umi_hover = update_mode_ui.clone();
@@ -1034,7 +1138,9 @@ fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
     });
 
     let is_hyprland = crate::backend::is_hyprland();
-    if is_hyprland {
+    let is_plasma = crate::backend::is_plasma();
+
+    if is_hyprland || is_plasma {
         let uinput_ok = check_uinput_permission();
         let rule_exists =
             std::path::Path::new("/etc/udev/rules.d/99-uinput-antiafk.rules").exists();
@@ -1089,35 +1195,52 @@ fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
             status,
         ));
 
-        let hyprctl_ok = Command::new("hyprctl").arg("version").output().is_ok();
-        let status = if hyprctl_ok {
-            ItemStatus::Ok
-        } else {
-            ItemStatus::Error
-        };
-        list.append(&add_compat_item(
-            "hyprctl Utility",
-            "Required for window control on Hyprland.",
-            None,
-            status,
-        ));
+        if is_hyprland {
+            let hyprctl_ok = Command::new("hyprctl").arg("version").output().is_ok();
+            let status = if hyprctl_ok {
+                ItemStatus::Ok
+            } else {
+                ItemStatus::Error
+            };
+            list.append(&add_compat_item(
+                "hyprctl Utility",
+                "Required for window control on Hyprland.",
+                None,
+                status,
+            ));
 
-        let grim_ok = Command::new("grim").arg("-h").output().is_ok();
-        let status = if grim_ok {
-            ItemStatus::Ok
-        } else {
-            ItemStatus::Error
-        };
-        list.append(&add_compat_item(
-            "grim Tool",
-            "Required for Auto-Reconnect (pixel scanning).",
-            None,
-            status,
-        ));
+            let grim_ok = Command::new("grim").arg("-h").output().is_ok();
+            let status = if grim_ok {
+                ItemStatus::Ok
+            } else {
+                ItemStatus::Error
+            };
+            list.append(&add_compat_item(
+                "grim Tool",
+                "Required for Auto-Reconnect (pixel scanning).",
+                None,
+                status,
+            ));
+        }
+
+        if is_plasma {
+            let qdbus_ok = Command::new("qdbus6").arg("--version").output().is_ok();
+            let status = if qdbus_ok {
+                ItemStatus::Ok
+            } else {
+                ItemStatus::Error
+            };
+            list.append(&add_compat_item(
+                "qdbus6 Utility",
+                "Required for window control on KDE Plasma 6.",
+                None,
+                status,
+            ));
+        }
     } else {
         list.append(&add_compat_item(
             "Compatibility",
-            "This project currently supports only Hyprland.",
+            "This project currently supports only Hyprland or KDE Plasma 6 (Wayland).",
             None,
             ItemStatus::Error,
         ));
@@ -1127,8 +1250,7 @@ fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
     spacer.set_vexpand(true);
     container.append(&spacer);
 
-    let is_hyprland = crate::backend::is_hyprland();
-    if is_hyprland {
+    if is_hyprland || is_plasma {
         let _uinput_ok = check_uinput_permission();
         let rule_exists =
             std::path::Path::new("/etc/udev/rules.d/99-uinput-antiafk.rules").exists();
@@ -1271,7 +1393,41 @@ fn add_compat_item(
     };
 
     let header = Box::new(Orientation::Horizontal, 10);
-    header.append(&Image::from_icon_name(icon_name));
+    let icon = match icon_name {
+        "emblem-ok-symbolic" => get_safe_icon(&[
+            "emblem-ok-symbolic",
+            "applied-symbolic",
+            "object-select-symbolic",
+            "check-symbolic",
+        ]),
+        "dialog-error-symbolic" => get_safe_icon(&[
+            "dialog-error-symbolic",
+            "software-update-urgent-symbolic",
+            "error-symbolic",
+        ]),
+        "dialog-warning-symbolic" => get_safe_icon(&[
+            "dialog-warning-symbolic",
+            "emblem-important-symbolic",
+            "warning-symbolic",
+        ]),
+        "dialog-information-symbolic" => get_safe_icon(&[
+            "dialog-information-symbolic",
+            "info-symbolic",
+            "emblem-info-symbolic",
+        ]),
+        "preferences-system-symbolic" => get_safe_icon(&[
+            "preferences-system-symbolic",
+            "emblem-system-symbolic",
+            "settings-symbolic",
+        ]),
+        "help-browser-symbolic" => get_safe_icon(&[
+            "help-browser-symbolic",
+            "help-contents-symbolic",
+            "help-info-symbolic",
+        ]),
+        _ => Image::from_icon_name(icon_name),
+    };
+    header.append(&icon);
     header.append(
         &Label::builder()
             .label(name)
