@@ -16,26 +16,25 @@
 
 Anti-AFK application specifically designed for **Sober** (Roblox on Linux). Currently focused on **Hyprland** environment (using "Swapper" mode).
 
-## 🚀 Key Features
+## ✨ Features
 
-- **Swapper Mode**: Smart window management in Hyprland. The program switches focus, performs an action, and returns the cursor to its original position.
-- **AFK Actions**: Jump (Space), Walk (W/S), or Camera Zoom (I/O).
-- **Auto-Start/Stop**: Automatically enables when Sober is detected and disables once the game is closed.
-- **User-Safe**: Pauses actions if user activity (mouse movement or key presses) is detected.
-- **FPS Capper**: Limits CPU resource consumption of background game processes via `systemd CPUQuota`. [BETA]
-- **Auto Reconnect**: Automatically clicks the "Reconnect" button on disconnect (uses `grim` for pixel analysis). [BETA]
-- **Stealth Mode**: Ability to run the game in "hidden" mode (Special Workspace in Hyprland) during action execution.
-- **System Tray**: Convenient control and status indication via the tray (powered by `ksni`).
+- **🧠 Smart window management**: The program switches focus, performs an action, and returns the cursor to its original position.
+- **⏰ AFK Actions**: Jump (Space), Walk (W/S), or Camera Zoom (I/O).
+- **⏯️ Auto-Start/Stop**: Automatically enables when Sober is detected and disables once the game is closed.
+- **🛡️ User-Safe**: Pauses actions if user activity (mouse movement or key presses) is detected.
+- **🎯 FPS Capper**: Limits CPU resource consumption of background game processes via `systemd CPUQuota`. [BETA]
+- **🔄 Auto Reconnect**: Automatically clicks the "Reconnect" button on disconnect (uses `grim` for pixel analysis). [BETA]
+- **🥷 Stealth Mode**: Ability to run the game in "hidden" mode (Special Workspace in Hyprland) during action execution.
+- **📥 Tray**: Convenient control and status indication via the tray (powered by `ksni`).
 
-## 📦 Installation & Setup
+## 📥 Installation
 
 <a id="installation"></a>
 
-### 1. Download
+### AppImage (binary)
+- **AppImage**: Download the latest version from the [Releases](https://github.com/Agzes/AntiAFK-RBX-Sober/releases) page. (run `chmod +x AntiAFK-RBX-Sober-vX.Y.Z.AppImage` and then `./AntiAFK-RBX-Sober-vX.Y.Z.AppImage` and see [Usage](#usage))
 
-- **AppImage**:
-Download the latest version from the [Releases](https://github.com/Agzes/AntiAFK-RBX-Sober/releases) page.
-
+### AUR (auto-build)
 - **[AUR](https://aur.archlinux.org/packages/antiafk-rbx-sober)**: 
 ```bash
 yay -S antiafk-rbx-sober
@@ -45,8 +44,11 @@ or
 paru -S antiafk-rbx-sober 
 ```
 
+<a id="usage"></a>
 
-### 2. uinput Permissions
+## 🚀 After install & usage
+
+### 1. uinput Permissions
 The program requires write access to `/dev/uinput` to simulate input. The application includes a **"FIX"** button in the Compatibility section that sets this up automatically (requires sudo password).
 
 But you can unlock it manually using (resets after reboot):
@@ -59,7 +61,7 @@ echo 'KERNEL=="uinput", MODE="0666"' | sudo tee /etc/udev/rules.d/99-uinput-anti
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-### 3. Register Application (Desktop & Autostart)
+### 2. Register Application (Desktop)
 *don't need if you install via AUR*
 
 To add the application to your system menu, run the binary with the `--install` flag:
@@ -70,45 +72,41 @@ This will automatically:
 - Create a `.desktop` entry in `~/.local/share/applications/`.
 - Install the application icon to `~/.local/share/icons/`.
 
-### 4. Dependencies
-The `grim` utility is required for the "Auto Reconnect" feature to function.
+### 3. Runtime Dependencies
+- **General**: `pgrep`, `systemd` (for FPS Capper).
+- **Hyprland**: `grim` (for "Auto Reconnect").
+- **KDE Plasma**: `spectacle` (for "Auto Reconnect") and `qdbus`/`qdbus6` (for focus management, basically pre-installed on KDE).
 
-## 🛠 Build
+## 📦 Build
 
-To build the project, you will need **Rust** (it is recommended to install via [rustup](https://rustup.rs/)).
+### Prerequisites
+You will need **Rust**, **GTK4**, and **libdbus** development libraries installed on your system.
 
-### Install System Dependencies
+### Building from Source
+1. Install [Rust](https://www.rust-lang.org/tools/install).
 
-> [!WARNING]
-> AntiAFK-RBX-Sober support only Hyprland at this time. Support for other environments (GNOME, KDE, X11) is currently in development.
+2. Install build-time dependencies:
+   - **Ubuntu/Debian**: `sudo apt install build-essential libgtk-4-dev libdbus-1-dev pkg-config`
+   - **Arch Linux**: `sudo pacman -S --needed base-devel gtk4 pkg-config`
+   - **Fedora**: `sudo dnf install gtk4-devel dbus-devel gcc pkg-config`
 
-#### **Arch Linux / Manjaro / EndeavourOS / CachyOS**
-```bash
-sudo pacman -S --needed base-devel gtk4 grim pkg-config
-```
+3. Clone the repository:
+   ```bash
+   git clone https://github.com/Agzes/AntiAFK-RBX-Sober.git
+   cd AntiAFK-RBX-Sober
+   ```
 
-#### **Fedora / Nobara**
-```bash
-sudo dnf install gtk4-devel grim gcc pkg-config
-```
+4. Build the project:
+   ```bash
+   cargo build --release
+   ```
 
-#### **Ubuntu / Debian / Linux Mint / Pop!_OS**
-```bash
-sudo apt install build-essential libgtk-4-dev grim pkg-config
-```
+5. Run the binary:
+   ```bash
+   ./target/release/AntiAFK-RBX-Sober
+   ```
 
-### Compilation Process
 
-1. Clone the repository:
-```bash
-git clone https://github.com/Agzes/AntiAFK-RBX-Sober.git
-cd AntiAFK-RBX-Sober
-```
-
-2. Build the release version:
-```bash
-cargo build --release
-```
 
 The compiled binary will be located at `target/release/AntiAFK-RBX-Sober`.
 
@@ -121,7 +119,7 @@ The compiled binary will be located at `target/release/AntiAFK-RBX-Sober`.
 1. Run `yay -Rns antiafk-rbx-sober` or `paru -Rns antiafk-rbx-sober`
 
 ## ⚠️ Important Note
-Currently, the **Swapper** mode (main functionality) only supports **Hyprland**. Support for other environments (GNOME, KDE, X11) is currently in development.
+Currently program support only Hyprland and KDE Plasma 6 (with AntiAFK-RBX-Sober v.0.2.0). Support for other environments (GNOME, NIRI, X11) is planning.
 
 ---
 
