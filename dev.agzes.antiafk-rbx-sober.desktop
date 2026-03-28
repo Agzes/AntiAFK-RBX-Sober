@@ -2,7 +2,7 @@
 Name=AntiAFK-RBX-Sober
 Comment=AntiAFK application for Sober on Linux
 Exec=AntiAFK-RBX-Sober
-Icon=antiafk-rbx-sober
+Icon=AntiAFK-RBX-Sober
 Terminal=false
 Type=Application
 Categories=Utility;
