@@ -119,7 +119,7 @@ The compiled binary will be located at `target/release/AntiAFK-RBX-Sober`.
 1. Run `yay -Rns antiafk-rbx-sober` or `paru -Rns antiafk-rbx-sober`
 
 ## ⚠️ Important Note
-Currently program support only Hyprland and KDE Plasma 6 (with AntiAFK-RBX-Sober v.0.2.0). Support for other environments (GNOME, NIRI, X11) is planning.
+Currently program support only Hyprland and KDE Plasma 6 (with AntiAFK-RBX-Sober v.0.2.0). Support for other environments (GNOME, NIRI, X11, COSMIC) is planning.
 
 ---
 
