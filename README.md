@@ -1,3 +1,7 @@
+<div align="center">
+  
+`⚒️` AntiAFK-RBX-Sober currently works on a small number of distributions and DEs, this will be fixed in the future!
+</div>
 <p align="center">
   <a href="https://github.com/Agzes/AntiAFK-RBX"><img src="readme/antiafk-rbx-v3.png" alt="Go To AntiAFK-RBX for windows" style="width:33%;"></a>
   <img src="readme/-.png" alt="" style="width:32%;">
