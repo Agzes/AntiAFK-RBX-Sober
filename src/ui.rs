@@ -168,10 +168,9 @@ fn bundled_icon(name: &str, pixel_size: i32) -> Image {
     image
 }
 
-fn create_compact_select(
-    initial_index: usize,
-    options: &[&str],
-) -> (Button, Popover, Rc<Label>, Rc<Cell<usize>>, Rc<Cell<bool>>) {
+type CompactSelectWidgets = (Button, Popover, Rc<Label>, Rc<Cell<usize>>, Rc<Cell<bool>>);
+
+fn create_compact_select(initial_index: usize, options: &[&str]) -> CompactSelectWidgets {
     let initial = options.get(initial_index).copied().unwrap_or(options[0]);
     let selected_label = Rc::new(Label::new(Some(initial)));
     selected_label.set_halign(Align::Start);

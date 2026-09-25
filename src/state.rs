@@ -163,7 +163,7 @@ impl AppState {
     }
 
     pub fn is_kde() -> bool {
-        std::env::var("XDG_CURRENT_DESKTOP").map_or(false, |v| {
+        std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| {
             let v = v.to_uppercase();
             v.contains("KDE") || v.contains("PLASMA")
         }) || std::env::var("KDE_FULL_SESSION").is_ok()

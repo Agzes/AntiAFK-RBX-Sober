@@ -94,42 +94,37 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 let _ = emit_key(&mut kb_device, Key::KEY_O, false);
             }
 
-            if s.auto_reconnect {
-                if let Some((target_x, target_y, win_w, win_h, screen_w, screen_h)) = geo {
-                    if let Some((r, g, b, _px, _py)) = get_pixel_color(win_w as i64, win_h as i64) {
-                        let target_r = 57i16;
-                        let target_g = 59i16;
-                        let target_b = 61i16;
-                        let diff = (r as i16 - target_r).abs()
-                            + (g as i16 - target_g).abs()
-                            + (b as i16 - target_b).abs();
+            if s.auto_reconnect
+                && let Some((target_x, target_y, win_w, win_h, screen_w, screen_h)) = geo
+                && let Some((r, g, b, _px, _py)) = get_pixel_color(win_w as i64, win_h as i64)
+            {
+                let target_r = 57i16;
+                let target_g = 59i16;
+                let target_b = 61i16;
+                let diff = (r as i16 - target_r).abs()
+                    + (g as i16 - target_g).abs()
+                    + (b as i16 - target_b).abs();
 
-                        if diff < 15 {
-                            let click_x = target_x - (win_w / 2)
-                                + (win_w - 400) / 2
-                                + (400 - 161 - 27)
-                                + (161 / 2);
-                            let click_y = target_y - (win_h / 2)
-                                + (win_h - 250) / 2
-                                + (250 - 34 - 21)
-                                + (34 / 2);
-                            warp_cursor(&mut pointer, click_x, click_y, screen_w, screen_h);
-                            thread::sleep(Duration::from_millis(200));
-                            for _ in 0..3 {
-                                let _ = pointer.emit(&[
-                                    InputEvent::new(EventType::KEY, Key::BTN_LEFT.0, 1),
-                                    InputEvent::new(EventType::SYNCHRONIZATION, 0, 0),
-                                ]);
-                                thread::sleep(Duration::from_millis(50));
-                                let _ = pointer.emit(&[
-                                    InputEvent::new(EventType::KEY, Key::BTN_LEFT.0, 0),
-                                    InputEvent::new(EventType::SYNCHRONIZATION, 0, 0),
-                                ]);
-                                thread::sleep(Duration::from_millis(100));
-                            }
-                            warp_cursor(&mut pointer, target_x, target_y, screen_w, screen_h);
-                        }
+                if diff < 15 {
+                    let click_x =
+                        target_x - (win_w / 2) + (win_w - 400) / 2 + (400 - 161 - 27) + (161 / 2);
+                    let click_y =
+                        target_y - (win_h / 2) + (win_h - 250) / 2 + (250 - 34 - 21) + (34 / 2);
+                    warp_cursor(&mut pointer, click_x, click_y, screen_w, screen_h);
+                    thread::sleep(Duration::from_millis(200));
+                    for _ in 0..3 {
+                        let _ = pointer.emit(&[
+                            InputEvent::new(EventType::KEY, Key::BTN_LEFT.0, 1),
+                            InputEvent::new(EventType::SYNCHRONIZATION, 0, 0),
+                        ]);
+                        thread::sleep(Duration::from_millis(50));
+                        let _ = pointer.emit(&[
+                            InputEvent::new(EventType::KEY, Key::BTN_LEFT.0, 0),
+                            InputEvent::new(EventType::SYNCHRONIZATION, 0, 0),
+                        ]);
+                        thread::sleep(Duration::from_millis(100));
                     }
+                    warp_cursor(&mut pointer, target_x, target_y, screen_w, screen_h);
                 }
             }
 
@@ -240,15 +235,15 @@ fn get_current_cursor_pos(qdbus: &str) -> Option<(i32, i32, i32, i32)> {
             if let Some(pos) = line.find("ANTIAFK_POS:") {
                 let data = &line[pos + 12..];
                 let parts: Vec<&str> = data.split(',').collect();
-                if parts.len() >= 4 {
-                    if let (Some(x), Some(y), Some(w), Some(h)) = (
+                if parts.len() >= 4
+                    && let (Some(x), Some(y), Some(w), Some(h)) = (
                         parts[0].trim().parse::<i32>().ok(),
                         parts[1].trim().parse::<i32>().ok(),
                         parts[2].trim().parse::<i32>().ok(),
                         parts[3].trim().parse::<i32>().ok(),
-                    ) {
-                        return Some((x, y, w, h));
-                    }
+                    )
+                {
+                    return Some((x, y, w, h));
                 }
             }
         }
@@ -369,17 +364,17 @@ fn focus_and_get_geometry(qdbus: &str, index: usize) -> Option<(i32, i32, i32, i
             if let Some(pos) = line.find("ANTIAFK_GEO:") {
                 let data = &line[pos + 12..];
                 let parts: Vec<&str> = data.split(',').collect();
-                if parts.len() >= 6 {
-                    if let (Some(cx), Some(cy), Some(ww), Some(wh), Some(sw), Some(sh)) = (
+                if parts.len() >= 6
+                    && let (Some(cx), Some(cy), Some(ww), Some(wh), Some(sw), Some(sh)) = (
                         parts[0].trim().parse::<i32>().ok(),
                         parts[1].trim().parse::<i32>().ok(),
                         parts[2].trim().parse::<i32>().ok(),
                         parts[3].trim().parse::<i32>().ok(),
                         parts[4].trim().parse::<i32>().ok(),
                         parts[5].trim().parse::<i32>().ok(),
-                    ) {
-                        return Some((cx, cy, ww, wh, sw, sh));
-                    }
+                    )
+                {
+                    return Some((cx, cy, ww, wh, sw, sh));
                 }
             }
         }

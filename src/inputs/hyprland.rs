@@ -70,10 +70,7 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 if pid == my_pid {
                     continue;
                 }
-                if class.contains("sober")
-                    || title.contains("roblox")
-                    || class == "sober"
-                {
+                if class.contains("sober") || title.contains("roblox") || class == "sober" {
                     let addr = client
                         .get("address")
                         .and_then(|v| v.as_str())
@@ -169,40 +166,40 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 if s.auto_reconnect {
                     let check_x = found_pos.0 + (found_pos.2 - 400) / 2 + 10;
                     let check_y = found_pos.1 + (found_pos.3 - 250) / 2 + 10;
-                    if let Some((r, g, b)) = get_pixel_color(check_x, check_y) {
-                        if r == 57 && g == 59 && b == 61 {
-                            let target_x = found_pos.0
-                                + (found_pos.2 - 400) / 2
-                                + (400 - 161 - 27)
-                                + (161 / 2);
-                            let target_y =
-                                found_pos.1 + (found_pos.3 - 250) / 2 + (250 - 34 - 21) + (34 / 2);
-                            incremental_mouse_move(
-                                &mut mouse_device,
-                                cx,
-                                cy,
-                                target_x,
-                                target_y,
-                                15,
-                                100,
-                            );
-                            thread::sleep(Duration::from_millis(100));
-                            for _ in 0..3 {
-                                let _ = emit_key(&mut mouse_device, Key::BTN_LEFT, true);
-                                thread::sleep(Duration::from_millis(30));
-                                let _ = emit_key(&mut mouse_device, Key::BTN_LEFT, false);
-                                thread::sleep(Duration::from_millis(30));
-                            }
-                            incremental_mouse_move(
-                                &mut mouse_device,
-                                target_x,
-                                target_y,
-                                cx,
-                                cy,
-                                10,
-                                80,
-                            );
+                    if let Some((r, g, b)) = get_pixel_color(check_x, check_y)
+                        && r == 57
+                        && g == 59
+                        && b == 61
+                    {
+                        let target_x =
+                            found_pos.0 + (found_pos.2 - 400) / 2 + (400 - 161 - 27) + (161 / 2);
+                        let target_y =
+                            found_pos.1 + (found_pos.3 - 250) / 2 + (250 - 34 - 21) + (34 / 2);
+                        incremental_mouse_move(
+                            &mut mouse_device,
+                            cx,
+                            cy,
+                            target_x,
+                            target_y,
+                            15,
+                            100,
+                        );
+                        thread::sleep(Duration::from_millis(100));
+                        for _ in 0..3 {
+                            let _ = emit_key(&mut mouse_device, Key::BTN_LEFT, true);
+                            thread::sleep(Duration::from_millis(30));
+                            let _ = emit_key(&mut mouse_device, Key::BTN_LEFT, false);
+                            thread::sleep(Duration::from_millis(30));
                         }
+                        incremental_mouse_move(
+                            &mut mouse_device,
+                            target_x,
+                            target_y,
+                            cx,
+                            cy,
+                            10,
+                            80,
+                        );
                     }
                 }
 

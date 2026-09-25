@@ -187,18 +187,13 @@ pub fn sync_binary() {
         return;
     }
 
-    if target_bin.exists() {
-        if !files_match(&current_exe, &target_bin) {
-            println!("Updating binary in .local/bin...");
-            let _ = std::fs::copy(&current_exe, &target_bin);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(
-                    &target_bin,
-                    std::fs::Permissions::from_mode(0o755),
-                );
-            }
+    if target_bin.exists() && !files_match(&current_exe, &target_bin) {
+        println!("Updating binary in .local/bin...");
+        let _ = std::fs::copy(&current_exe, &target_bin);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&target_bin, std::fs::Permissions::from_mode(0o755));
         }
     }
 }
@@ -216,10 +211,10 @@ fn files_match(p1: &std::path::Path, p2: &std::path::Path) -> bool {
     let m1 = f1.metadata().ok();
     let m2 = f2.metadata().ok();
 
-    if let (Some(m1), Some(m2)) = (m1, m2) {
-        if m1.len() != m2.len() {
-            return false;
-        }
+    if let (Some(m1), Some(m2)) = (m1, m2)
+        && m1.len() != m2.len()
+    {
+        return false;
     }
 
     use std::io::Read;

@@ -164,10 +164,10 @@ pub fn start_backend(state: SharedState) {
                 let mut current_target_scopes = HashSet::new();
                 let main_pids = get_all_sober_pids(&my_pid);
                 for pid in &main_pids {
-                    if let Some(scope) = get_systemd_scope(pid) {
-                        if scope.contains("app") || scope.contains("sober") {
-                            current_target_scopes.insert(scope);
-                        }
+                    if let Some(scope) = get_systemd_scope(pid)
+                        && (scope.contains("app") || scope.contains("sober"))
+                    {
+                        current_target_scopes.insert(scope);
                     }
                 }
 
@@ -241,15 +241,14 @@ fn is_focused_sober() -> bool {
         if let Ok(out) = Command::new("hyprctl")
             .args(["activewindow", "-j"])
             .output()
+            && let Ok(json) = serde_json::from_slice::<Value>(&out.stdout)
         {
-            if let Ok(json) = serde_json::from_slice::<Value>(&out.stdout) {
-                let class = json
-                    .get("class")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                return class.contains("sober") || class.contains("roblox");
-            }
+            let class = json
+                .get("class")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_lowercase();
+            return class.contains("sober") || class.contains("roblox");
         }
     } else if is_kde() {
         let Some(qdbus) = find_qdbus() else {
@@ -348,12 +347,11 @@ fn check_sober_running() -> bool {
 fn get_systemd_scope(pid: &str) -> Option<String> {
     let cgroup = std::fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
     for line in cgroup.lines() {
-        if let Some(path) = line.split("::").nth(1) {
-            if let Some(scope) = path.split('/').next_back() {
-                if scope.ends_with(".scope") || scope.ends_with(".service") {
-                    return Some(scope.to_string());
-                }
-            }
+        if let Some(path) = line.split("::").nth(1)
+            && let Some(scope) = path.split('/').next_back()
+            && (scope.ends_with(".scope") || scope.ends_with(".service"))
+        {
+            return Some(scope.to_string());
         }
     }
     None
