@@ -17,7 +17,7 @@ ksni = "0.2.2"
 clap = { version = "4.5", features = ["derive"] }
 image = "0.25"
 notify-rust = "4.11"
-dirs = "5.0"
+dirs = "7.0"
 
 [package.metadata.appimage]
 name = "AntiAFK-RBX-Sober"
