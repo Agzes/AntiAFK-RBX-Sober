@@ -1,5 +1,5 @@
-use crate::input::{create_keyboard_device, emit_key};
-use crate::state::SharedState;
+use crate::input::{create_keyboard_device, emit_key, tap_key};
+use crate::state::{RuntimeStatus, SharedState, set_runtime_status};
 use evdev::{
     AbsInfo, AbsoluteAxisType, EventType, InputEvent, Key, RelativeAxisType, UinputAbsSetup,
     uinput::VirtualDevice, uinput::VirtualDeviceBuilder,
@@ -20,14 +20,19 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
 
     loop {
         let s = { state_arc.lock().unwrap().clone() };
-        if !s.running || s.mode != 1 {
+        if !s.running {
             if s.stealth {
                 unminimize_all_target_windows(&qdbus);
             }
+            set_runtime_status(state_arc, RuntimeStatus::Stopped);
+            break;
+        }
+        if s.mode != 1 {
             break;
         }
 
         if s.user_safe && is_user_active_cursor(&qdbus, 3) {
+            set_runtime_status(state_arc, RuntimeStatus::Paused);
             thread::sleep(Duration::from_secs(2));
             continue;
         }
@@ -39,6 +44,7 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
         };
 
         if get_target_window_count(&qdbus) == 0 {
+            set_runtime_status(state_arc, RuntimeStatus::WaitingForSober);
             thread::sleep(Duration::from_secs(3));
             continue;
         }
@@ -46,7 +52,9 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
         {
             let mut state = state_arc.lock().unwrap();
             state.action_active = true;
+            state.runtime_status = RuntimeStatus::PerformingAction;
         }
+        thread::sleep(Duration::from_secs(1));
 
         let initial_pos = get_current_cursor_pos(&qdbus);
         let initial_window = get_active_window_internal_id(&qdbus);
@@ -71,9 +79,9 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
             }
 
             if s.walk {
-                let _ = emit_key(&mut kb_device, Key::KEY_W, true);
-                thread::sleep(Duration::from_millis(200));
-                let _ = emit_key(&mut kb_device, Key::KEY_W, false);
+                let _ = tap_key(&mut kb_device, Key::KEY_W, Duration::from_millis(200));
+                thread::sleep(Duration::from_millis(50));
+                let _ = tap_key(&mut kb_device, Key::KEY_S, Duration::from_millis(200));
             }
 
             if s.spin_jiggle {
@@ -141,10 +149,15 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
         }
 
         {
-            state_arc.lock().unwrap().action_active = false;
+            let mut state = state_arc.lock().unwrap();
+            state.action_active = false;
+            state.runtime_status = RuntimeStatus::Ready;
         }
 
         if responsive_sleep(state_arc, 1) {
+            if !state_arc.lock().unwrap().running {
+                set_runtime_status(state_arc, RuntimeStatus::Stopped);
+            }
             break;
         }
     }
@@ -400,9 +413,20 @@ fn minimize_window_by_index(qdbus: &str, index: usize) {
 }
 
 fn find_qdbus() -> Option<String> {
-    if Command::new("qdbus6").arg("--version").output().is_ok() {
+    let qdbus6 = Command::new("qdbus6")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    let qdbus = Command::new("qdbus")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+
+    if qdbus6 {
         Some("qdbus6".to_string())
-    } else if Command::new("qdbus").arg("--version").output().is_ok() {
+    } else if qdbus {
         Some("qdbus".to_string())
     } else {
         None

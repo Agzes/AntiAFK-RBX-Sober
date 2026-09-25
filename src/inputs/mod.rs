@@ -1,2 +1,2 @@
-pub mod swapper;
-pub mod plasma;
+pub mod hyprland;
+pub mod kde;

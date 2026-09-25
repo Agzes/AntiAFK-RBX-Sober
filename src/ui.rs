@@ -1,51 +1,46 @@
-use crate::state::SharedState;
+use crate::state::{RuntimeStatus, SharedState, set_runtime_error, set_runtime_status};
 use gtk::gdk_pixbuf::PixbufLoader;
 use gtk::gio;
 use gtk::gio::prelude::*;
 use gtk::prelude::*;
 use gtk::{
-    Adjustment, Align, Application, ApplicationWindow, Box, Button, CssProvider, DropDown, Image,
-    Label, ListBox, ListBoxRow, Orientation, SpinButton, Stack, StringList, Switch,
+    Adjustment, Align, Application, ApplicationWindow, Box, Button, CssProvider, Image, Label,
+    ListBox, ListBoxRow, Orientation, Overlay, Popover, Revealer, ScrolledWindow, SpinButton,
+    Stack, Switch,
 };
+use std::cell::Cell;
 use std::process::Command;
+use std::rc::Rc;
+use std::sync::OnceLock;
 
 const CURRENT_VERSION: &str = "0.2.0";
 
 const CSS: &str = "
     .main-window { background-color: @theme_bg_color; color: @theme_fg_color; }
-    .main-box { padding: 20px; padding-bottom: 14px; }
-    .header-box { margin-bottom: 20px; }
+    .main-box { padding: 0; }
+    .header-box { min-height: 36px; margin: 0; padding: 4px 12px; border-bottom: 1px solid alpha(@theme_fg_color, 0.08); }
+    .page-content { margin: 8px 16px 12px; }
     .app-title { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+    .compact-title { font-size: 15px; font-weight: 750; }
+    .app-subtitle { font-size: 13px; opacity: 0.72; }
     .version-btn { font-size: 9px; font-weight: bold; padding: 1px 5px; border-radius: 6px; background-color: alpha(@theme_fg_color, 0.08); color: @theme_fg_color; border: 1px solid alpha(@theme_fg_color, 0.12); margin-left: 8px; min-height: 18px; }
     .version-btn:hover { background-color: alpha(@theme_fg_color, 0.15); border: 1px solid alpha(@theme_fg_color, 0.2); }
-    .icon-btn { padding: 0; min-width: 22px; min-height: 22px; border-radius: 6px; }
-    .app-subtitle { font-size: 12px; margin-top: -2px; }
-    .app-subtitle a, .badge-link a { color: inherit; text-decoration: none; font-weight: bold; }
-    .app-subtitle a:hover { opacity: 1.0; text-decoration: underline; }
-    .section-title { font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.5; }
+    .top-icon-button { padding: 0; width: 28px; height: 28px; min-width: 28px; min-height: 28px; border-radius: 8px; background-color: alpha(@theme_fg_color, 0.07); border: none; }
+    .top-icon-button:hover { background-color: alpha(@theme_fg_color, 0.12); }
+    .section-title { font-size: 12px; font-weight: 700; opacity: 0.78; }
     .card { background-color: alpha(@theme_fg_color, 0.04); border: 1px solid alpha(@theme_fg_color, 0.08); border-radius: 12px; }
     list { background-color: transparent; border-radius: 12px; }
     row { padding: 8px 14px; border-bottom: 1px solid alpha(@theme_fg_color, 0.05); }
     row:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
     row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: none; }
-    row label.row-title { font-weight: 500; font-size: 14px; }
+    row label.row-title { font-weight: 500; font-size: 13px; }
+    .row-title-adjust { margin-top: 0.5px; }
     row label.row-subtitle { font-size: 11px; opacity: 0.5; }
     row.sub-row > box { margin-left: 20px; opacity: 0.85; }
     row.sub-row label.row-title { font-size: 13px; }
     .info-icon { opacity: 0.4; }
     .info-icon:hover { opacity: 0.9; }
-    .badge-link { padding: 2px 6px; border-radius: 6px; font-size: 9px; font-weight: 800; background-color: alpha(@theme_fg_color, 0.08); color: alpha(@theme_fg_color, 0.8); border: 1px solid alpha(@theme_fg_color, 0.12); }
-    .badge-link:hover { background-color: alpha(@theme_fg_color, 0.15); border: 1px solid alpha(@theme_fg_color, 0.2); }
-    .beta-badge { font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 5px; background-color: #f5c71a; color: #000; margin-left: 0px; }
-    dropdown button { padding: 0 6px; min-height: 26px; font-size: 12px; border-radius: 6px; }
-    .clean-dropdown, dropdown.clean-dropdown { background-color: transparent; border: none; box-shadow: none; padding: 0; margin: 0; outline: none; }
-    .clean-dropdown button, dropdown.clean-dropdown button.combo { background-color: alpha(@theme_fg_color, 0.08); border: 1px solid alpha(@theme_fg_color, 0.12); border-radius: 8px; padding: 0 10px; min-height: 24px; color: @theme_fg_color; margin: 0; box-shadow: none; outline: none; }
-    .clean-dropdown button *, dropdown.clean-dropdown button.combo * { background-color: transparent; border: none; box-shadow: none; }
-    .clean-dropdown button label, dropdown.clean-dropdown button.combo label { margin: 0; padding: 0; }
-    .clean-dropdown button image, dropdown.clean-dropdown button.combo image { margin-left: 14px; }
-    .clean-dropdown button > box, dropdown.clean-dropdown button.combo > box { spacing: 14px; column-gap: 14px; }
-    .clean-dropdown button:hover, dropdown.clean-dropdown button.combo:hover { background-color: alpha(@theme_fg_color, 0.12); border: 1px solid alpha(@theme_fg_color, 0.2); }
-    popover contents { background-color: @theme_bg_color; border: 1px solid alpha(@theme_fg_color, 0.15); border-radius: 20px; padding: 6px; color: @theme_fg_color; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    popover contents { background-color: @theme_bg_color; border: 1px solid alpha(@theme_fg_color, 0.15); border-radius: 12px; padding: 6px; color: @theme_fg_color; box-shadow: none; }
     popover listview, popover list { background-color: transparent; }
     popover listitem, popover row { padding: 8px 12px; border-radius: 10px; margin: 2px; transition: all 150ms ease; }
     popover listitem:hover, popover row:hover { background-color: alpha(@theme_fg_color, 0.08); }
@@ -53,34 +48,43 @@ const CSS: &str = "
     spinbutton { min-height: 26px; font-size: 12px; border-radius: 6px; padding: 0; background-color: alpha(@theme_fg_color, 0.05); border: 1px solid alpha(@theme_fg_color, 0.1); }
     spinbutton button { background: none; border: none; padding: 0 4px; min-height: 22px; box-shadow: none; }
     spinbutton button:hover { background-color: alpha(@theme_fg_color, 0.05); }
-    switch { margin: 0; transform: scale(0.85); outline: none; }
-    .start-button, .stop-button { border-radius: 12px; padding: 12px; font-weight: 800; font-size: 14px; border: none; transition: all 200ms ease; margin-bottom: 10px; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-    .start-button { background-image: linear-gradient(to bottom, #2ecc71, #27ae60); box-shadow: 0 4px 0px #1e8449, 0 8px 15px -3px rgba(0,0,0,0.2); }
-    .stop-button { background-image: linear-gradient(to bottom, #e74c3c, #c0392b); box-shadow: 0 4px 0px #922b21, 0 8px 15px -3px rgba(0,0,0,0.2); }
-    .start-button:hover, .stop-button:hover { transform: translateY(-2px); }
-    .start-button:hover { background-image: linear-gradient(to bottom, #34e07e, #2ecc71); box-shadow: 0 6px 0px #1e8449, 0 12px 20px -3px rgba(0,0,0,0.25); }
-    .stop-button:hover { background-image: linear-gradient(to bottom, #ff5e4d, #e74c3c); box-shadow: 0 6px 0px #922b21, 0 12px 20px -3px rgba(0,0,0,0.25); }
-    .start-button:active, .stop-button:active { transform: translateY(2px); }
-    .start-button:active { box-shadow: 0 2px 0px #1e8449; }
-    .stop-button:active { box-shadow: 0 2px 0px #922b21; }
-    .status-badge { padding: 2px 6px; border-radius: 6px; font-size: 9px; font-weight: 800; }
-    .status-badge.active { background-color: rgba(46, 204, 113, 0.25); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); }
-    .status-badge.inactive { background-color: alpha(@theme_fg_color, 0.08); color: @theme_fg_color; border: 1px solid alpha(@theme_fg_color, 0.12); }
-    .compat-box { padding: 0px; }
-    .compat-item { padding: 12px; border-radius: 12px; background: alpha(@theme_fg_color, 0.03); border: 1px solid alpha(@theme_fg_color, 0.06); margin-bottom: 8px; }
-    .compat-item.error { border-left: 4px solid @error_color; background: alpha(@error_color, 0.1); }
-    .compat-item.ok { border-left: 4px solid @success_color; background: alpha(@success_color, 0.1); }
-    .compat-item.warning-item { border-left: 4px solid @warning_color; background: alpha(@warning_color, 0.1); }
-    .compat-item.info-item { border-left: 4px solid @theme_selected_bg_color; background: alpha(@theme_selected_bg_color, 0.1); }
-    .tutorial-text { font-size: 11px; opacity: 0.6; margin-top: 4px; }
-    .compat-title { font-size: 16px; font-weight: 800; margin-bottom: 16px; opacity: 0.9; }
-    .compat-name { font-size: 13px; font-weight: bold; }
+    switch { margin: 0; outline: none; }
+    .start-button, .stop-button { min-height: 40px; border-radius: 10px; padding: 0 24px; font-weight: 600; font-size: 14px; border: none; box-shadow: none; margin-bottom: 0; color: @theme_selected_fg_color; }
+    .start-button { background-color: @theme_selected_bg_color; }
+    .stop-button { background-color: @error_color; }
+    .start-button:hover, .stop-button:hover { opacity: 0.88; }
+    .start-button:active, .stop-button:active { opacity: 0.76; }
+    .status-text { font-size: 11px; opacity: 0.7; }
+    .status-text.active { color: @success_color; opacity: 1; }
+    .status-text.paused { color: @warning_color; opacity: 1; }
+    .status-text.error { color: @error_color; opacity: 1; }
+    .settings-list { background-color: transparent; border: none; }
+    .main-settings-list { margin-top: -4px; margin-bottom: -4px; margin-left: -10px; margin-right: -10px; }
+    .diagnostics-list { margin-top: -4px; margin-bottom: -4px; margin-left: -10px; margin-right: -10px; }
+    .settings-list > row { min-height: 44px; padding: 0 8px; border-bottom: 1px solid alpha(@theme_fg_color, 0.08); }
+    .settings-list > row:last-child { border-bottom: none; }
+    .settings-row-icon { opacity: 0.78; }
+    .bottom-bar { padding: 16px; border-top: 1px solid alpha(@theme_fg_color, 0.1); }
+    .compact-select { min-width: 0; min-height: 30px; height: 30px; padding: 0 7px; border-radius: 7px; font-size: 12px; background-color: @theme_base_color; border: 1px solid alpha(@theme_fg_color, 0.14); color: @theme_fg_color; box-shadow: none; }
+    .compact-select:hover { background-color: alpha(@theme_fg_color, 0.1); }
+    .compact-select label { font-size: 12px; }
+    .select-option { min-height: 32px; padding: 5px 10px; border: none; border-radius: 7px; background-color: transparent; }
+    .select-option:hover { background-color: alpha(@theme_fg_color, 0.08); }
+    .status-indicator { padding: 5px 10px; border-radius: 15px; background-color: @theme_base_color; border: none; }
+    .diagnostics-button { border-radius: 7px; padding: 6px 10px; font-size: 11px; }
+    .back-button { min-height: 40px; border-radius: 10px; padding: 0 24px; font-weight: 600; font-size: 14px; background-color: alpha(@theme_fg_color, 0.08); border: none; color: @theme_fg_color; }
+    .back-button:hover { background-color: alpha(@theme_fg_color, 0.13); }
+    .diagnostic-ok { color: @success_color; font-size: 12px; font-weight: 600; }
+    .diagnostic-error { color: @error_color; font-size: 12px; font-weight: 600; }
+    .diagnostic-warning { color: @warning_color; font-size: 12px; font-weight: 600; }
     .welcome-title { font-size: 32px; font-weight: 800; letter-spacing: -1px; }
     .welcome-subtitle { font-size: 16px; margin-bottom: 20px; }
     .hypr-badge { background-color: alpha(@error_color, 0.2); color: @error_color; padding: 6px 14px; border-radius: 99px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
     .info-note { background-color: alpha(@theme_fg_color, 0.03); border: 1px solid alpha(@theme_fg_color, 0.07); padding: 20px; border-radius: 16px; margin: 10px 0; }
-    .rbx-text { color: #E2231A; }
-    .sober-text { color: #8fde58; }
+    .rbx-text { color: @error_color; font-weight: 800; }
+    .sober-text { color: @theme_selected_bg_color; }
+    .header-separator { font-size: 15px; font-weight: 500; opacity: 0.65; margin-left: 2px; margin-right: 2px; }
+    .sober-edition { font-size: 14px; font-weight: 600; }
     .error-text { color: @error_color; }
     .success-text { color: @success_color; }
     .warning-text { color: @warning_color; }
@@ -88,13 +92,144 @@ const CSS: &str = "
 
 ";
 
-fn get_safe_icon(names: &[&str]) -> Image {
-    for name in names {
-        if gtk::IconTheme::for_display(&gtk::gdk::Display::default().unwrap()).has_icon(name) {
-            return Image::from_icon_name(name);
+static DARK_THEME: OnceLock<bool> = OnceLock::new();
+
+fn system_uses_dark_theme() -> bool {
+    if let Ok(theme) = std::env::var("GTK_THEME")
+        && theme.to_lowercase().contains("dark")
+    {
+        return true;
+    }
+
+    for (schema, key) in [
+        ("org.gnome.desktop.interface", "color-scheme"),
+        ("org.gnome.desktop.interface", "gtk-theme"),
+        ("org.kde.gtk.config", "darkMode"),
+    ] {
+        let Ok(output) = Command::new("gsettings")
+            .args(["get", schema, key])
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let value = String::from_utf8_lossy(&output.stdout).to_lowercase();
+        if value.contains("prefer-dark") || value.contains("dark") || value.trim() == "true" {
+            return true;
         }
     }
-    Image::from_icon_name("image-missing")
+
+    false
+}
+
+fn bundled_icon(name: &str, pixel_size: i32) -> Image {
+    let dark_theme = *DARK_THEME.get_or_init(system_uses_dark_theme);
+    macro_rules! themed_icon {
+        ($icon:literal) => {{
+            let dark = include_bytes!(concat!("../assets/icons/dark/", $icon, ".png"));
+            let light = include_bytes!(concat!("../assets/icons/light/", $icon, ".png"));
+            if dark_theme {
+                dark.as_slice()
+            } else {
+                light.as_slice()
+            }
+        }};
+    }
+
+    let data = match name {
+        "interval" => themed_icon!("interval"),
+        "action" => themed_icon!("action"),
+        "autostart" => themed_icon!("autostart"),
+        "mouse" => themed_icon!("mouse"),
+        "multi" => themed_icon!("multi"),
+        "hide" => themed_icon!("hide"),
+        "reconnect" => themed_icon!("reconnect"),
+        "performance" => themed_icon!("performance"),
+        "cpu" => themed_icon!("cpu"),
+        "focus" => themed_icon!("focus"),
+        "settings" => themed_icon!("settings"),
+        "info" => themed_icon!("info"),
+        "check" => themed_icon!("check"),
+        "warning" => themed_icon!("warning"),
+        "chevron-down" => themed_icon!("chevron-down"),
+        "repository" => themed_icon!("repository"),
+        _ => return bundled_icon("warning", pixel_size),
+    };
+
+    let loader = PixbufLoader::new();
+    let _ = loader.write(data);
+    let _ = loader.close();
+    let image = Image::builder().pixel_size(pixel_size).build();
+    if let Some(pixbuf) = loader.pixbuf() {
+        image.set_from_pixbuf(Some(&pixbuf));
+    }
+    image
+}
+
+fn create_compact_select(
+    initial_index: usize,
+    options: &[&str],
+) -> (Button, Popover, Rc<Label>, Rc<Cell<usize>>, Rc<Cell<bool>>) {
+    let initial = options.get(initial_index).copied().unwrap_or(options[0]);
+    let selected_label = Rc::new(Label::new(Some(initial)));
+    selected_label.set_halign(Align::Start);
+    selected_label.set_hexpand(true);
+    let content = Box::new(Orientation::Horizontal, 5);
+    content.set_hexpand(true);
+    content.add_css_class("compact-select-content");
+    content.append(selected_label.as_ref());
+    content.append(&bundled_icon("chevron-down", 10));
+
+    let button = Button::new();
+    button.add_css_class("compact-select");
+    button.set_halign(Align::End);
+    button.set_hexpand(false);
+    button.set_child(Some(&content));
+
+    let popover = Popover::new();
+    popover.set_parent(&button);
+    popover.set_has_arrow(false);
+    let menu = Box::new(Orientation::Vertical, 2);
+    menu.set_margin_top(4);
+    menu.set_margin_bottom(4);
+    menu.set_margin_start(4);
+    menu.set_margin_end(4);
+
+    let selected_index = Rc::new(Cell::new(initial_index));
+    let selection_changed = Rc::new(Cell::new(false));
+    for (index, option) in options.iter().enumerate() {
+        let option = option.to_string();
+        let option_button = Button::with_label(&option);
+        option_button.add_css_class("select-option");
+        let label = selected_label.clone();
+        let popover_for_click = popover.clone();
+        let selected_for_click = selected_index.clone();
+        let changed_for_click = selection_changed.clone();
+        option_button.connect_clicked(move |_| {
+            label.set_text(&option);
+            selected_for_click.set(index);
+            changed_for_click.set(true);
+            popover_for_click.popdown();
+        });
+        menu.append(&option_button);
+    }
+    popover.set_child(Some(&menu));
+
+    let popover_for_button = popover.clone();
+    button.connect_clicked(move |_| {
+        popover_for_button.popup();
+    });
+    button.set_cursor_from_name(Some("pointer"));
+
+    (
+        button,
+        popover,
+        selected_label,
+        selected_index,
+        selection_changed,
+    )
 }
 
 fn check_uinput_permission() -> bool {
@@ -104,74 +239,80 @@ fn check_uinput_permission() -> bool {
         .is_ok()
 }
 
-fn create_row(
+fn command_succeeds(program: &str, args: &[&str]) -> bool {
+    Command::new(program)
+        .args(args)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn create_settings_row(
+    icon_name: &str,
     title: &str,
     subtitle: Option<&str>,
     widget: &impl IsA<gtk::Widget>,
     info_text: Option<&str>,
-    is_beta: bool,
     is_sub: bool,
-) -> (ListBoxRow, gtk::Widget) {
+) -> ListBoxRow {
     let row = ListBoxRow::new();
-    let main_hbox = Box::new(Orientation::Horizontal, 12);
-    main_hbox.set_valign(Align::Center);
+    row.set_height_request(44);
+    row.add_css_class("settings-row");
     if is_sub {
         row.add_css_class("sub-row");
     }
-    let text_vbox = Box::new(Orientation::Vertical, 0);
-    text_vbox.set_valign(Align::Center);
-    let title_hbox = Box::new(Orientation::Horizontal, 4);
-    title_hbox.set_valign(Align::Center);
-    if let Some(txt) = info_text {
-        let info_img = get_safe_icon(&[
-            "info-symbolic",
-            "help-info-symbolic",
-            "dialog-information-symbolic",
-        ]);
-        info_img.add_css_class("info-icon");
-        info_img.set_tooltip_text(Some(txt));
-        info_img.set_property("name", "row-info-icon");
-        title_hbox.append(&info_img);
+
+    let content = Box::new(Orientation::Horizontal, 8);
+    content.set_valign(Align::Center);
+    let icon = bundled_icon(icon_name, 18);
+    icon.add_css_class("settings-row-icon");
+    icon.set_valign(Align::Center);
+    icon.set_margin_bottom(2);
+    content.append(&icon);
+
+    let text = Box::new(Orientation::Vertical, 0);
+    if subtitle.is_none() {
+        text.set_size_request(-1, 20);
     }
-    let display_title = if is_sub {
-        format!("↳ {title}")
-    } else {
-        title.to_string()
-    };
-    title_hbox.append(
-        &Label::builder()
-            .label(&display_title)
-            .halign(Align::Start)
-            .css_classes(["row-title"])
-            .build(),
-    );
-    if is_beta {
-        let beta_lbl = Label::builder()
-            .label("BETA")
-            .css_classes(["beta-badge"])
-            .valign(Align::Center)
-            .build();
-        title_hbox.append(&beta_lbl);
+    text.set_valign(Align::Center);
+    let title_label = Label::builder()
+        .label(title)
+        .halign(Align::Start)
+        .css_classes(["row-title"])
+        .build();
+    if !is_sub {
+        title_label.add_css_class("row-title-adjust");
     }
-    text_vbox.append(&title_hbox);
-    if let Some(sub) = subtitle {
-        let sub_label = Label::builder()
-            .label(sub)
-            .halign(Align::Start)
-            .css_classes(["row-subtitle"])
-            .build();
-        text_vbox.append(&sub_label);
+    text.append(&title_label);
+    if let Some(subtitle) = subtitle {
+        text.append(
+            &Label::builder()
+                .label(subtitle)
+                .halign(Align::Start)
+                .css_classes(["row-subtitle"])
+                .build(),
+        );
     }
-    main_hbox.append(&text_vbox);
+    content.append(&text);
+
     let filler = Box::new(Orientation::Horizontal, 0);
     filler.set_hexpand(true);
-    main_hbox.append(&filler);
+    content.append(&filler);
+
+    if let Some(info_text) = info_text {
+        let info = bundled_icon("info", 16);
+        info.add_css_class("info-icon");
+        info.set_tooltip_text(Some(info_text));
+        info.set_valign(Align::Center);
+        content.append(&info);
+    }
+
     widget.set_valign(Align::Center);
-    main_hbox.append(widget);
-    row.set_child(Some(&main_hbox));
+    content.append(widget);
+    row.set_child(Some(&content));
     row.set_activatable(false);
     row.set_selectable(false);
-    (row, widget.clone().upcast::<gtk::Widget>())
+    row
 }
 
 pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
@@ -185,176 +326,134 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("AntiAFK-RBX")
-        .default_width(420)
-        .default_height(580)
-        .resizable(false)
+        .default_width(440)
+        .default_height(520)
+        .resizable(true)
         .build();
     window.add_css_class("main-window");
-    window.set_icon_name(Some(crate::state::APP_ID));
+    window.set_size_request(320, 420);
 
     let root_vbox = Box::new(Orientation::Vertical, 0);
     root_vbox.add_css_class("main-box");
     window.set_child(Some(&root_vbox));
 
-    let load_pb = |data: &[u8]| {
-        let loader = PixbufLoader::new();
-        loader.write(data).ok();
-        loader.close().ok();
-        loader.pixbuf()
-    };
-
-    let pb_logo = load_pb(include_bytes!("../assets/logo.png"));
-    let pb_off = load_pb(include_bytes!("../assets/tray-off.png"));
-    let pb_run = load_pb(include_bytes!("../assets/tray-run.png"));
-
-    let header_box = Box::new(Orientation::Horizontal, 12);
+    let header_box = Box::new(Orientation::Horizontal, 0);
     header_box.add_css_class("header-box");
 
-    let icon_stack = Stack::builder()
-        .transition_type(gtk::StackTransitionType::Crossfade)
-        .transition_duration(400)
-        .build();
-
-    let img_logo = Image::builder().pixel_size(44).build();
-    if let Some(pb) = pb_logo {
-        img_logo.set_from_pixbuf(Some(&pb));
-    }
-    let img_off = Image::builder().pixel_size(44).build();
-    if let Some(pb) = pb_off {
-        img_off.set_from_pixbuf(Some(&pb));
-    }
-    let img_run = Image::builder().pixel_size(44).build();
-    if let Some(pb) = pb_run {
-        img_run.set_from_pixbuf(Some(&pb));
-    }
-
-    icon_stack.add_named(&img_logo, Some("logo"));
-    icon_stack.add_named(&img_off, Some("off"));
-    icon_stack.add_named(&img_run, Some("run"));
-
-    let click_gesture = gtk::GestureClick::new();
-    let stack_cycle = icon_stack.clone();
-    click_gesture.connect_pressed(move |_, _, _, _| {
-        let current = stack_cycle
-            .visible_child_name()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        match current.as_str() {
-            "logo" => stack_cycle.set_visible_child_name("off"),
-            "off" => stack_cycle.set_visible_child_name("run"),
-            _ => stack_cycle.set_visible_child_name("logo"),
-        }
-    });
-    icon_stack.add_controller(click_gesture);
-    icon_stack.set_cursor_from_name(Some("pointer"));
-
-    header_box.append(&icon_stack);
-    let title_vbox = Box::new(Orientation::Vertical, 0);
     let title_hbox = Box::new(Orientation::Horizontal, 0);
+    title_hbox.set_hexpand(true);
+    title_hbox.set_halign(Align::Start);
     title_hbox.set_valign(Align::Center);
     title_hbox.append(
         &Label::builder()
             .label("AntiAFK-")
-            .css_classes(["app-title"])
+            .valign(Align::Center)
+            .css_classes(["compact-title"])
             .build(),
     );
-    let rbx_label = Label::builder()
-        .label("RBX")
-        .css_classes(["app-title", "rbx-text"])
-        .build();
-    title_hbox.append(&rbx_label);
+    title_hbox.append(
+        &Label::builder()
+            .label("RBX")
+            .valign(Align::Center)
+            .css_classes(["compact-title", "rbx-text"])
+            .build(),
+    );
+    title_hbox.append(
+        &Label::builder()
+            .label("-")
+            .valign(Align::Center)
+            .css_classes(["compact-title"])
+            .build(),
+    );
+    title_hbox.append(
+        &Label::builder()
+            .label("Sober")
+            .valign(Align::Center)
+            .css_classes(["compact-title", "sober-text"])
+            .build(),
+    );
+    title_hbox.set_margin_bottom(1);
 
-    let combined_btn = Button::builder()
-        .css_classes(["version-btn"])
+    let status_indicator = Box::new(Orientation::Horizontal, 0);
+    status_indicator.set_valign(Align::Center);
+    status_indicator.add_css_class("status-indicator");
+    let status_line = Label::builder()
+        .label("")
+        .halign(Align::Center)
+        .css_classes(["status-text"])
+        .valign(Align::Center)
+        .build();
+    status_indicator.append(&status_line);
+    let status_revealer = Revealer::new();
+    status_revealer.set_transition_type(gtk::RevealerTransitionType::Crossfade);
+    status_revealer.set_transition_duration(180);
+    status_revealer.set_reveal_child(false);
+    status_revealer.set_child(Some(&status_indicator));
+    status_revealer.set_size_request(-1, 36);
+    status_revealer.set_halign(Align::Center);
+    status_revealer.set_valign(Align::Center);
+
+    let title_overlay = Overlay::new();
+    title_overlay.set_hexpand(true);
+    title_overlay.set_halign(Align::Fill);
+    title_overlay.set_valign(Align::Center);
+    title_overlay.set_child(Some(&title_hbox));
+    title_overlay.add_overlay(&status_revealer);
+    header_box.append(&title_overlay);
+
+    let repository_icon = bundled_icon("repository", 16);
+    let repository_btn = Button::builder()
+        .css_classes(["top-icon-button"])
         .valign(Align::Center)
         .has_frame(false)
+        .tooltip_text("Open GitHub repository")
         .build();
+    repository_btn.set_halign(Align::Center);
+    repository_btn.set_valign(Align::Center);
+    repository_btn.set_child(Some(&repository_icon));
+    repository_btn.connect_clicked(|_| {
+        let _ = Command::new("xdg-open")
+            .arg("https://github.com/Agzes/AntiAFK-RBX-Sober")
+            .spawn();
+    });
 
-    let btn_content = Box::new(Orientation::Horizontal, 4);
-    btn_content.append(
-        &Label::builder()
-            .label(format!("v{CURRENT_VERSION}"))
-            .build(),
-    );
-    let settings_icon = get_safe_icon(&[
-        "preferences-system-symbolic",
-        "emblem-system-symbolic",
-        "settings-symbolic",
-    ]);
-    settings_icon.set_pixel_size(15);
-    btn_content.append(&settings_icon);
-    combined_btn.set_child(Some(&btn_content));
-
-    title_hbox.append(&combined_btn);
-
-    title_vbox.append(&title_hbox);
-    let sober_label = Label::builder()
-        .use_markup(true)
-        .label("<b>Sober Edition</b>")
-        .halign(Align::Start)
-        .css_classes(["app-subtitle", "sober-text"])
+    let settings_icon = bundled_icon("settings", 16);
+    let combined_btn = Button::builder()
+        .css_classes(["top-icon-button"])
+        .valign(Align::Center)
+        .has_frame(false)
+        .tooltip_text("Diagnostics")
         .build();
-    let by_label = Label::builder()
-        .use_markup(true)
-        .label(" • by <a href='https://github.com/agzes'>agzes</a>")
-        .halign(Align::Start)
-        .css_classes(["app-subtitle"])
-        .build();
-    let sub_hbox = Box::new(Orientation::Horizontal, 0);
-    sub_hbox.append(&sober_label);
-    sub_hbox.append(&by_label);
-    title_vbox.append(&sub_hbox);
-    header_box.append(&title_vbox);
-    let filler = Box::new(Orientation::Horizontal, 0);
-    filler.set_hexpand(true);
-    header_box.append(&filler);
-
-    let right_vbox = Box::new(Orientation::Vertical, 4);
-    right_vbox.set_valign(Align::Center);
-    right_vbox.set_halign(Align::End);
+    combined_btn.set_halign(Align::Center);
+    combined_btn.set_valign(Align::Center);
+    combined_btn.set_child(Some(&settings_icon));
+    let header_right = Box::new(Orientation::Horizontal, 4);
+    header_right.set_size_request(60, 28);
+    header_right.set_halign(Align::Center);
+    header_right.set_valign(Align::Center);
+    header_right.append(&repository_btn);
+    header_right.append(&combined_btn);
+    header_box.append(&header_right);
+    root_vbox.append(&header_box);
 
     let stack = Stack::builder()
         .transition_type(gtk::StackTransitionType::Crossfade)
         .vexpand(true)
         .build();
 
-    let top_hbox = Box::new(Orientation::Horizontal, 8);
-    top_hbox.set_halign(Align::End);
-
-    let status_badge = Label::builder()
-        .label("IDLE")
-        .css_classes(["status-badge", "inactive"])
-        .halign(Align::End)
-        .build();
-    top_hbox.append(&status_badge);
-    right_vbox.append(&top_hbox);
-    right_vbox.append(
-        &Label::builder()
-            .use_markup(true)
-            .label("<a href='https://github.com/agzes/AntiAFK-RBX-Sober'>GITHUB</a>")
-            .css_classes(["badge-link"])
-            .halign(Align::End)
-            .build(),
-    );
-    header_box.append(&right_vbox);
-    root_vbox.append(&header_box);
-
     let main_vbox = Box::new(Orientation::Vertical, 0);
-    main_vbox.append(&Box::builder().height_request(8).build());
+    main_vbox.add_css_class("page-content");
     let compat_vbox = Box::new(Orientation::Vertical, 0);
+    compat_vbox.add_css_class("page-content");
     compat_vbox.set_vexpand(true);
 
     let warning_vbox = Box::new(Orientation::Vertical, 0);
+    warning_vbox.add_css_class("page-content");
     warning_vbox.set_vexpand(true);
 
     warning_vbox.append(&Box::builder().height_request(80).build());
 
-    let welcome_icon = get_safe_icon(&[
-        "dialog-warning-symbolic",
-        "emblem-important-symbolic",
-        "warning-symbolic",
-    ]);
-    welcome_icon.set_pixel_size(80);
+    let welcome_icon = bundled_icon("warning", 80);
     welcome_icon.set_margin_bottom(20);
     welcome_icon.set_halign(Align::Center);
     warning_vbox.append(&welcome_icon);
@@ -390,7 +489,7 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     let note_text = Label::builder()
         .use_markup(true)
         .label(
-            "<span size='large' weight='800'>Wayland Only • WIP</span>\n\n\
+            "<span size='large' weight='800'>Wayland Only - WIP</span>\n\n\
         This project is currently a <b>Work In Progress</b>.\n\
         It works on <b>Hyprland</b> and <b>KDE Plasma 6 (Wayland)</b>.\n\
         GNOME, X11 and other are <b>not</b> supported yet.",
@@ -422,11 +521,24 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     stack.add_named(&main_vbox, Some("main"));
     stack.add_named(&compat_vbox, Some("compat"));
     stack.add_named(&warning_vbox, Some("warning"));
-    root_vbox.append(&stack);
 
+    let stack_scroller = ScrolledWindow::builder()
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    stack_scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    stack_scroller.set_child(Some(&stack));
+    root_vbox.append(&stack_scroller);
+
+    let bottom_bar = Overlay::new();
+    bottom_bar.add_css_class("bottom-bar");
+    root_vbox.append(&bottom_bar);
+
+    let version_check_widgets = create_version_check_widgets();
     let compat_vbox_clone = compat_vbox.clone();
     let stack_clone = stack.clone();
     let state_clone = state.clone();
+    let version_widgets_clone = version_check_widgets.clone();
     let refresh_compat = move || {
         while let Some(child) = compat_vbox_clone.first_child() {
             compat_vbox_clone.remove(&child);
@@ -435,306 +547,220 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
             compat_vbox_clone.clone(),
             stack_clone.clone(),
             state_clone.clone(),
+            version_widgets_clone.clone(),
         );
         stack_clone.set_visible_child_name("compat");
     };
 
     let rc = refresh_compat.clone();
+    let stack_for_settings = stack.clone();
     combined_btn.connect_clicked(move |_| {
-        rc();
+        if stack_for_settings
+            .visible_child_name()
+            .is_some_and(|name| name == "compat")
+        {
+            stack_for_settings.set_visible_child_name("main");
+        } else {
+            rc();
+        }
     });
 
-    let (last_version, shown_warning) = {
-        let s = state.lock().unwrap();
-        (s.last_run_version.clone(), s.shown_warning)
-    };
-
-    if !shown_warning {
-        stack.set_visible_child_name("warning");
-    } else if last_version.is_none_or(|v| v != CURRENT_VERSION) {
-        refresh_compat();
-    } else {
-        stack.set_visible_child_name("main");
+    {
+        let mut state = state.lock().unwrap();
+        state.shown_warning = true;
     }
+    stack.set_visible_child_name("main");
 
-    let btn_container = Box::builder().orientation(Orientation::Vertical).build();
-    main_vbox.append(&btn_container);
+    let btn_container = Box::new(Orientation::Vertical, 4);
+    btn_container.set_hexpand(true);
+    btn_container.set_halign(Align::Fill);
+    bottom_bar.set_child(Some(&btn_container));
 
     let toggle_button = Button::builder().label("Start Anti-AFK").build();
+    toggle_button.set_hexpand(true);
+    toggle_button.set_halign(Align::Fill);
     toggle_button.add_css_class("start-button");
+
+    let runtime_error = Label::builder()
+        .halign(Align::Start)
+        .wrap(true)
+        .margin_top(4)
+        .visible(false)
+        .css_classes(["error-text", "small-text"])
+        .build();
+    btn_container.append(&runtime_error);
+
+    let diagnostics_button = Button::builder()
+        .label("Open diagnostics")
+        .halign(Align::Start)
+        .visible(false)
+        .css_classes(["diagnostics-button"])
+        .build();
+    let diagnostics_refresh = refresh_compat.clone();
+    diagnostics_button.connect_clicked(move |_| diagnostics_refresh());
+    btn_container.append(&diagnostics_button);
     btn_container.append(&toggle_button);
 
-    let mode_warning = Label::builder()
-        .label("⚠ Selected method is not supported in your desktop.")
-        .visible(false)
-        .margin_bottom(6)
-        .css_classes(["error-text", "small-text"])
-        .build();
-    btn_container.append(&mode_warning);
-
-    let perm_warning = Label::builder()
-        .label("⚠ Permission Denied: Run sudo chmod 666 /dev/uinput")
-        .halign(Align::Center)
-        .wrap(true)
-        .margin_bottom(12)
-        .visible(!check_uinput_permission())
-        .css_classes(["error-text", "small-text"])
-        .build();
-    btn_container.append(&perm_warning);
-
-    main_vbox.append(
-        &Label::builder()
-            .label("Input & Action")
-            .css_classes(["section-title"])
-            .margin_start(4)
-            .margin_top(10)
-            .build(),
-    );
-    let core_list = ListBox::new();
-    core_list.add_css_class("card");
     let initial_state = { state.lock().unwrap().clone() };
-    let mode_names = vec!["Swapper", "Plasma (preview)", "Other Desktops"];
-    let is_hypr_detected = crate::backend::is_hyprland();
-    let is_plasma_detected = crate::backend::is_plasma();
 
-    let list_factory = gtk::SignalListItemFactory::new();
-    list_factory.connect_setup(move |_, list_item| {
-        let box_ = Box::new(Orientation::Vertical, 0);
-        let title = Label::builder()
-            .halign(Align::Start)
-            .use_markup(true)
-            .build();
-        let subtitle = Label::builder()
-            .halign(Align::Start)
-            .css_classes(["row-subtitle"])
-            .build();
-        let wip = Label::builder()
-            .halign(Align::Start)
-            .use_markup(true)
-            .build();
-        subtitle.set_margin_top(-2);
-        box_.append(&title);
-        box_.append(&subtitle);
-        box_.append(&wip);
-        list_item
-            .downcast_ref::<gtk::ListItem>()
-            .unwrap()
-            .set_child(Some(&box_));
-    });
+    let settings_list = ListBox::new();
+    settings_list.add_css_class("settings-list");
+    settings_list.add_css_class("main-settings-list");
 
-    list_factory.connect_bind(move |_, list_item| {
-        let item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
-        let box_ = item.child().unwrap().downcast::<Box>().unwrap();
-        let title = box_.first_child().unwrap().downcast::<Label>().unwrap();
-        let subtitle = title.next_sibling().unwrap().downcast::<Label>().unwrap();
-        let wip = subtitle
-            .next_sibling()
-            .unwrap()
-            .downcast::<Label>()
-            .unwrap();
-
-        let pos = item.position();
-        if pos == 0 {
-            title.set_markup("<b>Swapper</b>");
-            subtitle.set_label("Desktops: Hyprland");
-            if is_hypr_detected {
-                wip.set_markup(
-                    "<span size='smaller' color='#8fde58' weight='bold'>Recommended</span>",
-                );
-            } else {
-                wip.set_markup(
-                    "<span size='smaller' color='#ff5555' weight='bold'>Not supported</span>",
-                );
-            }
-        } else if pos == 1 {
-            title.set_markup("<b>Plasma (preview)</b>");
-            subtitle.set_label("Desktops: KDE Plasma 6");
-            if is_plasma_detected {
-                wip.set_markup(
-                    "<span size='smaller' color='#8fde58' weight='bold'>Recommended</span>",
-                );
-            } else {
-                wip.set_markup(
-                    "<span size='smaller' color='#ff5555' weight='bold'>Not supported</span>",
-                );
-            }
-        } else {
-            title.set_markup("<b>Other Environments</b>");
-            subtitle.set_label("GNOME, X11");
-            wip.set_markup(
-                "<span size='smaller' color='#ff5555' weight='bold'>WIP / Planned</span>",
-            );
-        }
-    });
-
-    let selected_factory = gtk::SignalListItemFactory::new();
-    selected_factory.connect_setup(move |_, list_item| {
-        let label = Label::builder().halign(Align::Start).build();
-        list_item
-            .downcast_ref::<gtk::ListItem>()
-            .unwrap()
-            .set_child(Some(&label));
-    });
-    selected_factory.connect_bind(move |_, list_item| {
-        let item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
-        let label = item.child().unwrap().downcast::<Label>().unwrap();
-        let pos = item.position();
-        if pos == 0 {
-            label.set_label("Swapper");
-        } else if pos == 1 {
-            label.set_label("Plasma (preview)");
-        } else {
-            label.set_label("Other (WIP)");
-        }
-    });
-
-    let mode_dropdown = DropDown::builder()
-        .model(&StringList::new(&mode_names))
-        .factory(&selected_factory)
-        .list_factory(&list_factory)
-        .selected(initial_state.mode as u32)
-        .build();
-    mode_dropdown.add_css_class("clean-dropdown");
-
-    let mode_info =
-        "Methods of performing actions and simulating user activity in the game windows.";
-    let (row, _) = create_row(
-        "Input Method",
-        Some("Simulation & Action methods"),
-        &mode_dropdown,
-        Some(mode_info),
-        false,
-        false,
-    );
-    core_list.append(&row);
-    let action_idx = if initial_state.jump {
-        0
-    } else if initial_state.walk {
-        1
-    } else {
-        2
+    let interval_index = match initial_state.interval_seq {
+        240 => 0,
+        360 => 1,
+        540 => 2,
+        1140 => 3,
+        _ => 4,
     };
-    let action_dropdown = DropDown::builder()
-        .model(&StringList::new(&[
-            "Jump (Space)",
-            "Walk (W/S)",
-            "Zoom (I/O)",
-        ]))
-        .selected(action_idx)
-        .build();
-    action_dropdown.add_css_class("clean-dropdown");
-    let (row, _) = create_row(
-        "AFK Action",
-        Some("Select character action"),
-        &action_dropdown,
+    let (interval_select, interval_popover, interval_label, interval_selected, interval_changed) =
+        create_compact_select(
+            interval_index,
+            &["4 min", "6 min", "9 min", "19 min", "Custom"],
+        );
+    interval_select.set_size_request(96, 30);
+    settings_list.append(&create_settings_row(
+        "interval",
+        "Interval",
+        None,
+        &interval_select,
         None,
         false,
+    ));
+
+    let action_index = if initial_state.walk {
+        1
+    } else if initial_state.spin_jiggle {
+        2
+    } else {
+        0
+    };
+    let (action_select, action_popover, _action_label, action_selected, action_changed) =
+        create_compact_select(action_index, &["Jump", "Walk", "Camera"]);
+    action_select.set_size_request(82, 30);
+    settings_list.append(&create_settings_row(
+        "action",
+        "Idle action",
+        None,
+        &action_select,
+        None,
         false,
-    );
-    core_list.append(&row);
-    let adj = Adjustment::new(
-        initial_state.interval_seq as f64,
+    ));
+    main_vbox.append(&settings_list);
+
+    let custom_interval_adjustment = Adjustment::new(
+        (initial_state.interval_seq as f64 / 60.0).clamp(1.0, 20.0),
         1.0,
-        1200.0,
+        20.0,
         1.0,
-        10.0,
+        1.0,
         0.0,
     );
-    let interval_spin = SpinButton::builder()
-        .adjustment(&adj)
+    let custom_interval_spin = SpinButton::builder()
+        .adjustment(&custom_interval_adjustment)
         .climb_rate(1.0)
-        .digits(0)
+        .digits(1)
         .numeric(true)
         .build();
-    let (row, _) = create_row(
-        "AFK Interval (s)",
-        Some("Time between AFK cycles"),
-        &interval_spin,
-        None,
-        false,
-        false,
-    );
-    core_list.append(&row);
-    main_vbox.append(&core_list);
-
-    main_vbox.append(
+    let custom_popover = Popover::new();
+    custom_popover.set_parent(&interval_select);
+    custom_popover.set_has_arrow(false);
+    let custom_popover_box = Box::new(Orientation::Vertical, 8);
+    custom_popover_box.set_margin_top(12);
+    custom_popover_box.set_margin_bottom(12);
+    custom_popover_box.set_margin_start(12);
+    custom_popover_box.set_margin_end(12);
+    custom_popover_box.append(
         &Label::builder()
-            .label("Automation & Other")
+            .label("Custom interval (minutes)")
             .css_classes(["section-title"])
-            .margin_start(4)
-            .margin_top(14)
             .build(),
     );
-    let auto_list = ListBox::new();
-    auto_list.add_css_class("card");
-    let auto_start_sw = Switch::new();
-    auto_start_sw.set_active(initial_state.auto_start);
-    let (row, _) = create_row(
-        "Auto-Start",
-        Some("Enable AFK when Sober is detected"),
-        &auto_start_sw,
-        None,
-        false,
-        false,
-    );
-    auto_list.append(&row);
-    let user_safe_sw = Switch::new();
-    user_safe_sw.set_active(initial_state.user_safe);
-    let (user_safe_row, _) = create_row(
-        "User-Safe",
-        Some("Pause action on activity"),
-        &user_safe_sw,
-        Some("Note: Plasma only detects cursor movement"),
-        true,
-        false,
-    );
-    auto_list.append(&user_safe_row);
+    custom_popover_box.append(&custom_interval_spin);
+    let custom_apply_button = Button::builder().label("Apply").halign(Align::End).build();
+    custom_popover_box.append(&custom_apply_button);
+    custom_popover.set_child(Some(&custom_popover_box));
+    {
+        let state_for_interval = state.clone();
+        let interval_label = interval_label.clone();
+        let interval_selected = interval_selected.clone();
+        custom_popover.connect_closed(move |_| {
+            let interval = state_for_interval.lock().unwrap().interval_seq;
+            let (selected, label) = match interval {
+                240 => (0, "4 min"),
+                360 => (1, "6 min"),
+                540 => (2, "9 min"),
+                1140 => (3, "19 min"),
+                _ => (4, "Custom"),
+            };
+            interval_selected.set(selected);
+            interval_label.set_text(label);
+        });
+    }
     let multi_instance_sw = Switch::new();
     multi_instance_sw.set_active(initial_state.multi_instance);
-    let (row, _) = create_row(
+    settings_list.append(&create_settings_row(
+        "multi",
         "Multi-Instance",
-        Some("Support multiple game clients"),
+        None,
         &multi_instance_sw,
         None,
         false,
+    ));
+
+    let auto_start_sw = Switch::new();
+    auto_start_sw.set_active(initial_state.auto_start);
+    settings_list.append(&create_settings_row(
+        "autostart",
+        "Auto-Start",
+        None,
+        &auto_start_sw,
+        None,
         false,
-    );
-    auto_list.append(&row);
+    ));
+    let user_safe_sw = Switch::new();
+    user_safe_sw.set_active(initial_state.user_safe);
+    settings_list.append(&create_settings_row(
+        "mouse",
+        "Don't Interrupt Me",
+        None,
+        &user_safe_sw,
+        Some("Current desktop adapters detect mouse movement only."),
+        false,
+    ));
 
     let stealth_sw = Switch::new();
     stealth_sw.set_active(initial_state.stealth);
-    let (stealth_row, _) = create_row(
-        "Stealth Mode",
-        Some("Minimize window after actions"),
+    settings_list.append(&create_settings_row(
+        "hide",
+        "Hide Game",
+        None,
         &stealth_sw,
         None,
         false,
-        false,
-    );
-    auto_list.append(&stealth_row);
+    ));
     let reconnect_sw = Switch::new();
     reconnect_sw.set_active(initial_state.auto_reconnect);
-    let (row, _) = create_row(
+    settings_list.append(&create_settings_row(
+        "reconnect",
         "Auto Reconnect",
-        Some("Auto-click 'Reconnect' button"),
+        None,
         &reconnect_sw,
         None,
-        true,
         false,
-    );
-    auto_list.append(&row);
+    ));
 
     let fps_capper_sw = Switch::new();
     fps_capper_sw.set_active(initial_state.fps_capper);
-    let (row, _) = create_row(
+    settings_list.append(&create_settings_row(
+        "performance",
         "FPS Capper",
-        Some("Limit background process resources"),
+        None,
         &fps_capper_sw,
         None,
-        true,
         false,
-    );
-    auto_list.append(&row);
+    ));
     let fps_adj = Adjustment::new(
         f64::from(initial_state.fps_limit),
         3.0,
@@ -749,28 +775,23 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         .digits(0)
         .numeric(true)
         .build();
-    let (fps_limit_row, fps_limit_widget) = create_row(
-        "CPU Quota (%)",
-        Some("Max CPU time allowed"),
-        &fps_limit_spin,
-        None,
-        false,
-        true,
-    );
+    let fps_limit_row = create_settings_row("cpu", "CPU Quota", None, &fps_limit_spin, None, true);
     fps_limit_row.set_visible(initial_state.fps_capper);
-    auto_list.append(&fps_limit_row);
+    settings_list.append(&fps_limit_row);
+    let fps_limit_widget = fps_limit_spin.clone().upcast::<gtk::Widget>();
     let unlock_focus_sw = Switch::new();
     unlock_focus_sw.set_active(initial_state.stop_limit_on_focus);
-    let (unlock_focus_row, unlock_focus_widget) = create_row(
+    let unlock_focus_row = create_settings_row(
+        "focus",
         "Unlock at Focus",
-        Some("Disable limit when window active"),
+        None,
         &unlock_focus_sw,
         None,
-        false,
         true,
     );
     unlock_focus_row.set_visible(initial_state.fps_capper);
-    auto_list.append(&unlock_focus_row);
+    settings_list.append(&unlock_focus_row);
+    let unlock_focus_widget = unlock_focus_sw.clone().upcast::<gtk::Widget>();
 
     let fps_limit_row_clone = fps_limit_row.clone();
     let unlock_focus_row_clone = unlock_focus_row.clone();
@@ -785,14 +806,10 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         unlock_focus_widget_clone.set_sensitive(!is_running);
         glib::Propagation::Proceed
     });
-    main_vbox.append(&auto_list);
 
     let stealth_live = stealth_sw.clone();
     let update_state = {
         let state_arc = state.clone();
-        let mode_dd_live = mode_dropdown.clone();
-        let interval_spin_live = interval_spin.clone();
-        let action_dd_live = action_dropdown.clone();
         let auto_start_live = auto_start_sw.clone();
         let multi_instance_live = multi_instance_sw.clone();
         let stealth_live = stealth_live.clone();
@@ -804,20 +821,12 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
 
         move || {
             let mut s = state_arc.lock().unwrap();
-            s.mode = mode_dd_live.selected() as usize;
-            let action_idx = action_dd_live.selected();
-            s.jump = action_idx == 0;
-            s.walk = action_idx == 1;
-            s.spin_jiggle = action_idx == 2;
-            s.interval_seq = interval_spin_live.value() as u64;
             if auto_start_live.is_active() && !s.auto_start {
                 s.manually_stopped = false;
             }
             s.auto_start = auto_start_live.is_active();
             s.multi_instance = multi_instance_live.is_active();
-            let st = stealth_live.is_active();
-            s.stealth = st;
-            s.hides_game = st;
+            s.stealth = stealth_live.is_active();
             s.user_safe = user_safe_live.is_active();
             s.auto_reconnect = auto_reconnect_live.is_active();
             s.fps_capper = fps_capper_live.is_active();
@@ -827,12 +836,60 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
         }
     };
 
-    let us = update_state.clone();
-    mode_dropdown.connect_selected_notify(move |_| us());
-    let us = update_state.clone();
-    action_dropdown.connect_selected_notify(move |_| us());
-    let us = update_state.clone();
-    interval_spin.connect_value_changed(move |_| us());
+    {
+        let state_for_action = state.clone();
+        let selected = action_selected.clone();
+        let changed = action_changed.clone();
+        action_popover.connect_closed(move |_| {
+            if !changed.replace(false) {
+                return;
+            }
+            let selected = selected.get();
+            let mut state = state_for_action.lock().unwrap();
+            state.jump = selected == 0;
+            state.walk = selected == 1;
+            state.spin_jiggle = selected == 2;
+            state.save();
+        });
+    }
+    {
+        let state_for_interval = state.clone();
+        let selected = interval_selected.clone();
+        let changed = interval_changed.clone();
+        let custom_popover = custom_popover.clone();
+        let custom_interval_spin = custom_interval_spin.clone();
+        interval_popover.connect_closed(move |_| {
+            if !changed.replace(false) {
+                return;
+            }
+            let selected = selected.get();
+            if selected < 4 {
+                let interval = [240, 360, 540, 1140][selected];
+                let mut state = state_for_interval.lock().unwrap();
+                state.interval_seq = interval;
+                state.save();
+            } else {
+                let current = state_for_interval.lock().unwrap().interval_seq;
+                custom_interval_spin.set_value((current as f64 / 60.0).clamp(1.0, 20.0));
+                custom_popover.popup();
+            }
+        });
+    }
+    {
+        let state_for_interval = state.clone();
+        let popover = custom_popover.clone();
+        let spin = custom_interval_spin.clone();
+        custom_apply_button.connect_clicked(move |_| {
+            let value = (spin.value() * 60.0).round() as u64;
+            {
+                let mut state = state_for_interval.lock().unwrap();
+                state.interval_seq = value;
+                state.save();
+            }
+            popover.popdown();
+        });
+    }
+
     let us = update_state.clone();
     auto_start_sw.connect_state_set(move |_, _| {
         us();
@@ -873,9 +930,9 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
     });
 
     let controls: Vec<gtk::Widget> = vec![
-        mode_dropdown.clone().upcast::<gtk::Widget>(),
-        action_dropdown.clone().upcast::<gtk::Widget>(),
-        interval_spin.clone().upcast::<gtk::Widget>(),
+        action_select.clone().upcast::<gtk::Widget>(),
+        interval_select.clone().upcast::<gtk::Widget>(),
+        custom_interval_spin.clone().upcast::<gtk::Widget>(),
         auto_start_sw.clone().upcast::<gtk::Widget>(),
         multi_instance_sw.clone().upcast::<gtk::Widget>(),
         stealth_sw.clone().upcast::<gtk::Widget>(),
@@ -888,34 +945,78 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
 
     let update_controls = {
         let btn_sync = toggle_button.clone();
-        let status_badge_sync = status_badge.clone();
+        let status_line_sync = status_line.clone();
+        let status_revealer_sync = status_revealer.clone();
+        let title_hbox_sync = title_hbox.clone();
+        let runtime_error_sync = runtime_error.clone();
+        let diagnostics_sync = diagnostics_button.clone();
+        let stack_sync = stack.clone();
         let controls = controls.clone();
         let state_sync = state.clone();
         move || {
-            let (is_running, action_active) = {
+            let (is_running, action_active, runtime_status, error_message) = {
                 let s = state_sync.lock().unwrap();
-                (s.running, s.action_active)
+                (
+                    s.running,
+                    s.action_active,
+                    s.runtime_status,
+                    s.error_message.clone(),
+                )
             };
-            let btn_is_stop = btn_sync.label().is_some_and(|l| l.contains("Stop"));
-            if is_running != btn_is_stop {
-                if is_running {
-                    btn_sync.set_label("Stop Anti-AFK");
-                    btn_sync.add_css_class("stop-button");
-                    btn_sync.remove_css_class("start-button");
-                    status_badge_sync.set_label("ACTIVE");
-                    status_badge_sync.add_css_class("active");
-                    status_badge_sync.remove_css_class("inactive");
-                } else {
-                    btn_sync.set_label("Start Anti-AFK");
-                    btn_sync.add_css_class("start-button");
-                    btn_sync.remove_css_class("stop-button");
-                    status_badge_sync.set_label("IDLE");
-                    status_badge_sync.add_css_class("inactive");
-                    status_badge_sync.remove_css_class("active");
+
+            let diagnostics_visible = stack_sync
+                .visible_child_name()
+                .is_some_and(|name| name == "compat");
+            let (button_label, button_class) = if diagnostics_visible {
+                ("Back to Settings", "back-button")
+            } else if is_running {
+                ("Stop Anti-AFK", "stop-button")
+            } else {
+                ("Start Anti-AFK", "start-button")
+            };
+            if !btn_sync.label().is_some_and(|label| label == button_label) {
+                btn_sync.set_label(button_label);
+                for class_name in ["start-button", "stop-button", "back-button"] {
+                    btn_sync.remove_css_class(class_name);
                 }
+                btn_sync.add_css_class(button_class);
             }
-            for c in &controls {
-                c.set_sensitive(!is_running && !action_active);
+
+            let (status_label, status_class, status_visible) = if diagnostics_visible {
+                ("", "", false)
+            } else {
+                match runtime_status {
+                    RuntimeStatus::Stopped => ("Anti-AFK is off", "", false),
+                    RuntimeStatus::WaitingForSober => ("Waiting for Sober", "", true),
+                    RuntimeStatus::Ready => ("Anti-AFK is on", "active", false),
+                    RuntimeStatus::Paused => ("Paused - mouse activity", "paused", true),
+                    RuntimeStatus::PerformingAction => ("Performing action", "active", true),
+                    RuntimeStatus::Error => ("Setup required", "error", true),
+                }
+            };
+            if status_line_sync.label() != status_label {
+                status_line_sync.set_label(status_label);
+            }
+            for class_name in ["active", "paused", "error"] {
+                status_line_sync.remove_css_class(class_name);
+            }
+            if !status_class.is_empty() {
+                status_line_sync.add_css_class(status_class);
+            }
+            status_revealer_sync.set_reveal_child(status_visible);
+            title_hbox_sync.set_opacity(if status_visible { 0.2 } else { 1.0 });
+
+            if !diagnostics_visible && runtime_status == RuntimeStatus::Error {
+                runtime_error_sync.set_text(error_message.as_deref().unwrap_or("Unknown error"));
+                runtime_error_sync.set_visible(true);
+                diagnostics_sync.set_visible(true);
+            } else {
+                runtime_error_sync.set_visible(false);
+                diagnostics_sync.set_visible(false);
+            }
+
+            for control in &controls {
+                control.set_sensitive(!is_running && !action_active);
             }
             glib::ControlFlow::Continue
         }
@@ -923,231 +1024,148 @@ pub fn build_ui(app: &Application, state: SharedState) -> ApplicationWindow {
 
     let uc_manual = update_controls.clone();
     let state_manual = state.clone();
+    let stack_manual = stack.clone();
     toggle_button.connect_clicked(move |_| {
-        let mut s = state_manual.lock().unwrap();
-        s.running = !s.running;
-        s.manually_stopped = !s.running;
-        drop(s);
+        if stack_manual
+            .visible_child_name()
+            .is_some_and(|name| name == "compat")
+        {
+            stack_manual.set_visible_child_name("main");
+            let settings = { state_manual.lock().unwrap().clone() };
+            match crate::backend::preflight(&settings) {
+                Ok(()) => {
+                    let mut state = state_manual.lock().unwrap();
+                    if state.runtime_status == RuntimeStatus::Error {
+                        state.runtime_status = RuntimeStatus::Stopped;
+                        state.error_message = None;
+                    }
+                }
+                Err(error) => set_runtime_error(&state_manual, error),
+            }
+            uc_manual();
+            return;
+        }
+
+        let is_running = { state_manual.lock().unwrap().running };
+        if is_running {
+            {
+                let mut state = state_manual.lock().unwrap();
+                state.running = false;
+                state.manually_stopped = true;
+            }
+            set_runtime_status(&state_manual, RuntimeStatus::Stopped);
+        } else {
+            let settings = { state_manual.lock().unwrap().clone() };
+            match crate::backend::preflight(&settings) {
+                Ok(()) => {
+                    {
+                        let mut state = state_manual.lock().unwrap();
+                        state.running = true;
+                        state.manually_stopped = false;
+                    }
+                    set_runtime_status(&state_manual, RuntimeStatus::WaitingForSober);
+                }
+                Err(error) => set_runtime_error(&state_manual, error),
+            }
+        }
         uc_manual();
     });
 
+    {
+        let settings = { state.lock().unwrap().clone() };
+        if let Err(error) = crate::backend::preflight(&settings) {
+            set_runtime_error(&state, error);
+        }
+    }
+    update_controls();
     glib::timeout_add_local(std::time::Duration::from_millis(500), update_controls);
-
-    let toggle_btn_restrict = toggle_button.clone();
-    let mode_warn_restrict = mode_warning.clone();
-    let perm_warn_restrict = perm_warning.clone();
-    let multi_instance_restrict = multi_instance_sw.clone();
-    let user_safe_restrict = user_safe_sw.clone();
-    let reconnect_restrict = reconnect_sw.clone();
-    let is_hyprland = crate::backend::is_hyprland();
-    let is_plasma = crate::backend::is_plasma();
-
-    let user_safe_row_live = user_safe_row.clone();
-    let stealth_row_live = stealth_row.clone();
-    let update_mode_ui = move |selected_idx: u32| {
-        let user_safe_row = user_safe_row_live.clone();
-        let stealth_row = stealth_row_live.clone();
-        let is_swapper = selected_idx == 0;
-        let is_plasma_mode = selected_idx == 1;
-        let is_other = selected_idx == 2;
-        let has_uinput = check_uinput_permission();
-
-        perm_warn_restrict.set_visible(!has_uinput);
-
-        let mut invalid = false;
-        if is_swapper && !is_hyprland {
-            invalid = true;
-            mode_warn_restrict.set_markup("<span size='small' color='#ff5555'>⚠ Swapper requires Hyprland. Your desktop is not supported.</span>");
-        } else if is_plasma_mode && !is_plasma {
-            invalid = true;
-            mode_warn_restrict.set_markup("<span size='small' color='#ff5555'>⚠ Plasma (preview) requires KDE Plasma 6. Your desktop is not supported.</span>");
-        } else if is_other {
-            invalid = true;
-            mode_warn_restrict.set_markup("<span size='small' color='#ff5555'>⚠ This method is in development (WIP) and cannot be started.</span>");
-        }
-
-        mode_warn_restrict.set_visible(invalid);
-        toggle_btn_restrict.set_sensitive(!invalid && has_uinput);
-
-        multi_instance_restrict.set_sensitive(is_swapper || is_plasma_mode);
-        user_safe_restrict.set_sensitive(is_swapper || is_plasma_mode);
-        stealth_row.set_sensitive(is_swapper || is_plasma_mode);
-
-        let mut curr = user_safe_row.first_child();
-        while let Some(c1) = curr {
-            let mut curr2 = c1.first_child();
-            while let Some(c2) = curr2 {
-                let mut curr3 = c2.first_child();
-                while let Some(c3) = curr3 {
-                    let mut curr4 = c3.first_child();
-                    while let Some(c4) = curr4 {
-                        let name = c4.widget_name();
-                        if name == "row-info-icon" || name == "row-beta-badge" {
-                            c4.set_visible(is_plasma_mode);
-                        }
-                        curr4 = c4.next_sibling();
-                    }
-                    curr3 = c3.next_sibling();
-                }
-                curr2 = c2.next_sibling();
-            }
-            curr = c1.next_sibling();
-        }
-
-        reconnect_restrict.set_sensitive(is_swapper || is_plasma_mode);
-    };
-
-    let umi_hover = update_mode_ui.clone();
-    let mode_dd_hover = mode_dropdown.clone();
-    let hover_controller = gtk::EventControllerMotion::new();
-    hover_controller.connect_enter(move |_, _, _| {
-        umi_hover(mode_dd_hover.selected());
-    });
-    btn_container.add_controller(hover_controller);
-
-    let umi = update_mode_ui.clone();
-    mode_dropdown.connect_selected_notify(move |dd: &DropDown| {
-        umi(dd.selected());
-    });
-
-    update_mode_ui(mode_dropdown.selected());
 
     window.present();
     window
 }
 
-fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
+fn build_compat_ui(
+    container: Box,
+    stack: Stack,
+    state: SharedState,
+    version_widgets: VersionCheckWidgets,
+) {
     container.append(
         &Label::builder()
-            .label("Compatibility Check")
-            .css_classes(["compat-title"])
-            .halign(Align::Start)
+            .label("Diagnostics")
+            .css_classes(["compact-title"])
+            .margin_top(8)
+            .margin_bottom(10)
+            .halign(Align::Center)
             .build(),
     );
-    let list = Box::new(Orientation::Vertical, 0);
+    let list = ListBox::new();
+    list.add_css_class("settings-list");
+    list.add_css_class("diagnostics-list");
     container.append(&list);
 
-    let version_box = Box::new(Orientation::Vertical, 0);
-    list.append(&version_box);
-    version_box.append(&add_compat_item(
-        "Application Version",
-        "Checking for updates...",
+    let version_control = Box::new(Orientation::Horizontal, 6);
+    version_control.append(&version_widgets.label);
+    version_control.append(&version_widgets.button);
+    list.append(&create_settings_row(
+        "info",
+        "Version",
         None,
-        ItemStatus::Ok,
+        &version_control,
+        None,
+        false,
     ));
 
-    #[allow(deprecated)]
-    let (tx, rx) =
-        glib::MainContext::channel::<Result<(bool, String), String>>(glib::Priority::DEFAULT);
-
-    let tx_thread = tx.clone();
-    std::thread::spawn(move || {
-        let res = check_latest_version();
-        let _ = tx_thread.send(res);
-    });
-
-    let version_box_v = version_box.clone();
-    let stack_v = stack.clone();
-    let state_v = state.clone();
-    let container_v = container.clone();
-
-    rx.attach(None, move |result| {
-        while let Some(child) = version_box_v.first_child() {
-            version_box_v.remove(&child);
-        }
-
-        let render_version =
-            |res: Result<(bool, String), String>, vb: Box, s: Stack, st: SharedState, c: Box| {
-                while let Some(child) = vb.first_child() {
-                    vb.remove(&child);
-                }
-                match res {
-                    Ok((version_ok, latest_v)) => {
-                        let version_tutorial = if version_ok {
-                            format!("Current: v{CURRENT_VERSION}. You have the latest version.")
-                        } else {
-                            format!("Update available: v{latest_v}. Visit GitHub to download.")
-                        };
-                        let check_btn = Button::builder()
-                            .label(if version_ok { "CHECK" } else { "UPDATE" })
-                            .css_classes(["version-btn"])
-                            .valign(Align::Center)
-                            .build();
-                        let s_c = s.clone();
-                        let st_c = st.clone();
-                        let c_c = c.clone();
-                        let v_ok = version_ok;
-                        check_btn.connect_clicked(move |_| {
-                            if v_ok {
-                                while let Some(child) = c_c.first_child() {
-                                    c_c.remove(&child);
-                                }
-                                build_compat_ui(c_c.clone(), s_c.clone(), st_c.clone());
-                            } else {
-                                let _ = Command::new("xdg-open")
-                                    .arg("https://github.com/agzes/AntiAFK-RBX-Sober/releases")
-                                    .spawn();
-                            }
-                        });
-                        let status = if version_ok {
-                            ItemStatus::Ok
-                        } else {
-                            ItemStatus::Info
-                        };
-                        vb.append(&add_compat_item(
-                            "Application Version",
-                            &version_tutorial,
-                            Some(check_btn.upcast()),
-                            status,
-                        ));
-                    }
-                    Err(e) => {
-                        let retry_btn = Button::builder()
-                            .label("RETRY")
-                            .css_classes(["version-btn"])
-                            .valign(Align::Center)
-                            .build();
-                        let s_c = s.clone();
-                        let st_c = st.clone();
-                        let c_c = c.clone();
-                        retry_btn.connect_clicked(move |_| {
-                            while let Some(child) = c_c.first_child() {
-                                c_c.remove(&child);
-                            }
-                            build_compat_ui(c_c.clone(), s_c.clone(), st_c.clone());
-                        });
-                        vb.append(&add_compat_item(
-                            "Application Version",
-                            &e,
-                            Some(retry_btn.upcast()),
-                            ItemStatus::Warning,
-                        ));
-                    }
-                }
-            };
-
-        render_version(
-            result,
-            version_box_v.clone(),
-            stack_v.clone(),
-            state_v.clone(),
-            container_v.clone(),
-        );
-
-        glib::ControlFlow::Break
-    });
+    let (environment_name, environment_ok) = match state.lock().unwrap().mode {
+        0 => ("Hyprland", true),
+        1 => ("KDE Plasma 6", true),
+        _ => ("Unsupported", false),
+    };
+    let environment_label = Label::builder()
+        .label(environment_name)
+        .css_classes([if environment_ok {
+            "diagnostic-ok"
+        } else {
+            "diagnostic-error"
+        }])
+        .build();
+    list.append(&create_settings_row(
+        "settings",
+        "Environment",
+        None,
+        &environment_label,
+        None,
+        false,
+    ));
 
     let is_hyprland = crate::backend::is_hyprland();
-    let is_plasma = crate::backend::is_plasma();
+    let is_kde = crate::backend::is_kde();
+    let auto_reconnect = { state.lock().unwrap().auto_reconnect };
+    let settings = { state.lock().unwrap().clone() };
 
-    if is_hyprland || is_plasma {
+    match crate::backend::preflight(&settings) {
+        Ok(()) => list.append(&add_compat_item(
+            "Automation Preflight",
+            "",
+            None,
+            ItemStatus::Ok,
+        )),
+        Err(error) => list.append(&add_compat_item(
+            "Automation Preflight",
+            &error,
+            None,
+            ItemStatus::Error,
+        )),
+    }
+
+    if is_hyprland || is_kde {
         let uinput_ok = check_uinput_permission();
         let rule_exists =
             std::path::Path::new("/etc/udev/rules.d/99-uinput-antiafk.rules").exists();
 
-        let fix_action = if !uinput_ok || !rule_exists {
+        let fix_action = if !rule_exists {
             let mini_fix = Button::builder()
-                .label("FIX")
+                .label("Fix")
                 .css_classes(["version-btn"])
                 .valign(Align::Center)
                 .build();
@@ -1155,6 +1173,7 @@ fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
             let stack_clone = stack.clone();
             let state_clone = state.clone();
             let container_clone = container.clone();
+            let version_widgets_clone = version_widgets.clone();
             mini_fix.connect_clicked(move |_| {
                 let s_c = stack_clone.clone();
                 let st_c = state_clone.clone();
@@ -1167,6 +1186,7 @@ fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
                 );
 
                 if let Ok(p) = proc {
+                    let version_widgets_for_refresh = version_widgets_clone.clone();
                     glib::spawn_future_local(async move {
                         let _ = p.wait_future().await;
                         glib::timeout_future(std::time::Duration::from_millis(500)).await;
@@ -1174,135 +1194,28 @@ fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
                         while let Some(child) = c_c.first_child() {
                             c_c.remove(&child);
                         }
-                        build_compat_ui(c_c.clone(), s_c.clone(), st_c.clone());
+                        build_compat_ui(
+                            c_c.clone(),
+                            s_c.clone(),
+                            st_c.clone(),
+                            version_widgets_for_refresh,
+                        );
                     });
                 }
             });
             Some(mini_fix.upcast::<gtk::Widget>())
         } else {
-            None
-        };
-
-        let status = if uinput_ok {
-            ItemStatus::Ok
-        } else {
-            ItemStatus::Error
-        };
-        list.append(&add_compat_item(
-            "uinput Permissions",
-            "Access to /dev/uinput required for simulation.",
-            fix_action,
-            status,
-        ));
-
-        if is_hyprland {
-            let hyprctl_ok = Command::new("hyprctl").arg("version").output().is_ok();
-            let status = if hyprctl_ok {
-                ItemStatus::Ok
-            } else {
-                ItemStatus::Error
-            };
-            list.append(&add_compat_item(
-                "hyprctl Utility",
-                "Required for window control on Hyprland.",
-                None,
-                status,
-            ));
-
-            let grim_ok = Command::new("grim").arg("-h").output().is_ok();
-            let status = if grim_ok {
-                ItemStatus::Ok
-            } else {
-                ItemStatus::Error
-            };
-            list.append(&add_compat_item(
-                "grim Tool",
-                "Required for Auto-Reconnect (pixel scanning).",
-                None,
-                status,
-            ));
-        }
-
-        if is_plasma {
-            let qdbus_ok = Command::new("qdbus6").arg("--version").output().is_ok();
-            let status = if qdbus_ok {
-                ItemStatus::Ok
-            } else {
-                ItemStatus::Error
-            };
-            list.append(&add_compat_item(
-                "qdbus6 Utility",
-                "Required for window control on KDE Plasma 6.",
-                None,
-                status,
-            ));
-        }
-    } else {
-        list.append(&add_compat_item(
-            "Compatibility",
-            "This project currently supports only Hyprland or KDE Plasma 6 (Wayland).",
-            None,
-            ItemStatus::Error,
-        ));
-    }
-
-    let spacer = Box::new(Orientation::Vertical, 0);
-    spacer.set_vexpand(true);
-    container.append(&spacer);
-
-    if is_hyprland || is_plasma {
-        let _uinput_ok = check_uinput_permission();
-        let rule_exists =
-            std::path::Path::new("/etc/udev/rules.d/99-uinput-antiafk.rules").exists();
-
-        if !rule_exists {
-            let fix_btn = Button::builder()
-                .label("Auto-Fix Permissions")
-                .css_classes(["version-btn"])
-                .halign(Align::Center)
-                .margin_bottom(10)
-                .build();
-
-            let stack_clone = stack.clone();
-            let state_clone = state.clone();
-            let container_clone = container.clone();
-            fix_btn.connect_clicked(move |_| {
-                let s_c = stack_clone.clone();
-                let st_c = state_clone.clone();
-                let c_c = container_clone.clone();
-
-                let cmd = "echo 'KERNEL==\"uinput\", MODE=\"0666\"' > /etc/udev/rules.d/99-uinput-antiafk.rules && udevadm control --reload-rules && udevadm trigger";
-                let proc = gio::Subprocess::newv(
-                    &["pkexec".as_ref(), "sh".as_ref(), "-c".as_ref(), cmd.as_ref()],
-                    gio::SubprocessFlags::NONE
-                );
-
-                if let Ok(p) = proc {
-                    glib::spawn_future_local(async move {
-                        let _ = p.wait_future().await;
-                        glib::timeout_future(std::time::Duration::from_millis(500)).await;
-                        while let Some(child) = c_c.first_child() {
-                            c_c.remove(&child);
-                        }
-                        build_compat_ui(c_c.clone(), s_c.clone(), st_c.clone());
-                    });
-                }
-            });
-            container.append(&fix_btn);
-        }
-
-        if rule_exists {
-            let remove_btn = Button::builder()
+            let remove_fix = Button::builder()
                 .label("Remove Auto-Fix Rule")
                 .css_classes(["version-btn"])
-                .halign(Align::Center)
-                .margin_bottom(10)
+                .valign(Align::Center)
                 .build();
 
             let stack_clone = stack.clone();
             let state_clone = state.clone();
             let container_clone = container.clone();
-            remove_btn.connect_clicked(move |_| {
+            let version_widgets_clone = version_widgets.clone();
+            remove_fix.connect_clicked(move |_| {
                 let s_c = stack_clone.clone();
                 let st_c = state_clone.clone();
                 let c_c = container_clone.clone();
@@ -1314,33 +1227,164 @@ fn build_compat_ui(container: Box, stack: Stack, state: SharedState) {
                 );
 
                 if let Ok(p) = proc {
+                    let version_widgets_for_refresh = version_widgets_clone.clone();
                     glib::spawn_future_local(async move {
                         let _ = p.wait_future().await;
                         glib::timeout_future(std::time::Duration::from_millis(500)).await;
+
                         while let Some(child) = c_c.first_child() {
                             c_c.remove(&child);
                         }
-                        build_compat_ui(c_c.clone(), s_c.clone(), st_c.clone());
+                        build_compat_ui(
+                            c_c.clone(),
+                            s_c.clone(),
+                            st_c.clone(),
+                            version_widgets_for_refresh,
+                        );
                     });
                 }
             });
-            container.append(&remove_btn);
+            Some(remove_fix.upcast::<gtk::Widget>())
+        };
+
+        let status = if uinput_ok {
+            ItemStatus::Ok
+        } else {
+            ItemStatus::Error
+        };
+        list.append(&add_compat_item(
+            "uinput Permissions",
+            "",
+            fix_action,
+            status,
+        ));
+
+        if is_hyprland {
+            let hyprctl_ok = command_succeeds("hyprctl", &["version"]);
+            let status = if hyprctl_ok {
+                ItemStatus::Ok
+            } else {
+                ItemStatus::Error
+            };
+            list.append(&add_compat_item("hyprctl Utility", "", None, status));
+
+            if auto_reconnect {
+                let grim_ok = command_succeeds("grim", &["-h"]);
+                let status = if grim_ok {
+                    ItemStatus::Ok
+                } else {
+                    ItemStatus::Error
+                };
+                list.append(&add_compat_item("grim Tool", "", None, status));
+            }
+        }
+
+        if is_kde {
+            let qdbus_ok = command_succeeds("qdbus6", &["--version"])
+                || command_succeeds("qdbus", &["--version"]);
+            let status = if qdbus_ok {
+                ItemStatus::Ok
+            } else {
+                ItemStatus::Error
+            };
+            list.append(&add_compat_item("qdbus Utility", "", None, status));
+
+            let journalctl_ok = command_succeeds("journalctl", &["--version"]);
+            let status = if journalctl_ok {
+                ItemStatus::Ok
+            } else {
+                ItemStatus::Error
+            };
+            list.append(&add_compat_item("journalctl Utility", "", None, status));
+
+            if auto_reconnect {
+                let spectacle_ok = command_succeeds("spectacle", &["--version"]);
+                let status = if spectacle_ok {
+                    ItemStatus::Ok
+                } else {
+                    ItemStatus::Error
+                };
+                list.append(&add_compat_item("spectacle Tool", "", None, status));
+            }
         }
     }
+}
 
-    let continue_btn = Button::builder()
-        .label("Return to Dashboard")
-        .css_classes(["start-button"])
-        .build();
-    let stack_clone = stack.clone();
-    let state_clone = state.clone();
-    continue_btn.connect_clicked(move |_| {
-        let mut s = state_clone.lock().unwrap();
-        s.last_run_version = Some(CURRENT_VERSION.to_string());
-        s.save();
-        stack_clone.set_visible_child_name("main");
+type VersionCheckResult = Result<(bool, String), String>;
+
+#[derive(Clone)]
+struct VersionCheckWidgets {
+    label: Label,
+    button: Button,
+}
+
+fn apply_version_check_result(result: VersionCheckResult, label: &Label, button: &Button) {
+    for class_name in ["diagnostic-ok", "diagnostic-warning", "diagnostic-error"] {
+        label.remove_css_class(class_name);
+    }
+
+    match result {
+        Ok((true, _)) => {
+            label.set_text("Latest");
+            label.add_css_class("diagnostic-ok");
+            button.set_label("Check");
+        }
+        Ok((false, latest)) => {
+            label.set_text(&format!("v{latest} available"));
+            label.add_css_class("diagnostic-warning");
+            button.set_label("Check");
+        }
+        Err(_) => {
+            label.set_text("Unavailable");
+            label.add_css_class("diagnostic-error");
+            button.set_label("Retry");
+        }
+    }
+    button.set_sensitive(true);
+}
+
+fn request_version_check(tx: &glib::Sender<VersionCheckResult>, label: &Label, button: &Button) {
+    label.set_text("Checking...");
+    label.remove_css_class("diagnostic-ok");
+    label.remove_css_class("diagnostic-error");
+    label.add_css_class("diagnostic-warning");
+    button.set_sensitive(false);
+
+    let tx = tx.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(check_latest_version());
     });
-    container.append(&continue_btn);
+}
+
+fn create_version_check_widgets() -> VersionCheckWidgets {
+    let label = Label::builder()
+        .label(format!("v{CURRENT_VERSION}"))
+        .css_classes(["diagnostic-ok"])
+        .build();
+    let button = Button::builder()
+        .label("Check")
+        .css_classes(["version-btn"])
+        .build();
+
+    #[allow(deprecated)]
+    let (tx, rx) = glib::MainContext::channel::<VersionCheckResult>(glib::Priority::DEFAULT);
+    let label_update = label.clone();
+    let button_update = button.clone();
+    rx.attach(None, move |result| {
+        apply_version_check_result(result, &label_update, &button_update);
+        glib::ControlFlow::Continue
+    });
+
+    let tx_click = tx.clone();
+    let label_click = label.clone();
+    let button_click = button.clone();
+    button.connect_clicked(move |_| {
+        request_version_check(&tx_click, &label_click, &button_click);
+    });
+
+    request_version_check(&tx, &label, &button);
+
+    VersionCheckWidgets { label, button }
 }
 
 fn check_latest_version() -> Result<(bool, String), String> {
@@ -1370,94 +1414,33 @@ fn add_compat_item(
     tutorial: &str,
     widget: Option<gtk::Widget>,
     status: ItemStatus,
-) -> Box {
-    let item = Box::new(Orientation::Vertical, 2);
-    item.add_css_class("compat-item");
-    let icon_name = match status {
-        ItemStatus::Ok => {
-            item.add_css_class("ok");
-            "emblem-ok-symbolic"
-        }
-        ItemStatus::Error => {
-            item.add_css_class("error");
-            "dialog-error-symbolic"
-        }
-        ItemStatus::Warning => {
-            item.add_css_class("warning-item");
-            "dialog-warning-symbolic"
-        }
-        ItemStatus::Info => {
-            item.add_css_class("info-item");
-            "dialog-information-symbolic"
-        }
+) -> ListBoxRow {
+    let (icon_name, status_text, status_class) = match status {
+        ItemStatus::Ok => ("check", "Ready", "diagnostic-ok"),
+        ItemStatus::Error => ("warning", "Error", "diagnostic-error"),
     };
 
-    let header = Box::new(Orientation::Horizontal, 10);
-    let icon = match icon_name {
-        "emblem-ok-symbolic" => get_safe_icon(&[
-            "emblem-ok-symbolic",
-            "applied-symbolic",
-            "object-select-symbolic",
-            "check-symbolic",
-        ]),
-        "dialog-error-symbolic" => get_safe_icon(&[
-            "dialog-error-symbolic",
-            "software-update-urgent-symbolic",
-            "error-symbolic",
-        ]),
-        "dialog-warning-symbolic" => get_safe_icon(&[
-            "dialog-warning-symbolic",
-            "emblem-important-symbolic",
-            "warning-symbolic",
-        ]),
-        "dialog-information-symbolic" => get_safe_icon(&[
-            "dialog-information-symbolic",
-            "info-symbolic",
-            "emblem-info-symbolic",
-        ]),
-        "preferences-system-symbolic" => get_safe_icon(&[
-            "preferences-system-symbolic",
-            "emblem-system-symbolic",
-            "settings-symbolic",
-        ]),
-        "help-browser-symbolic" => get_safe_icon(&[
-            "help-browser-symbolic",
-            "help-contents-symbolic",
-            "help-info-symbolic",
-        ]),
-        _ => Image::from_icon_name(icon_name),
-    };
-    header.append(&icon);
-    header.append(
+    let control = Box::new(Orientation::Horizontal, 6);
+    control.append(
         &Label::builder()
-            .label(name)
-            .css_classes(["compat-name"])
+            .label(status_text)
+            .css_classes([status_class])
             .build(),
     );
-
-    let filler = Box::new(Orientation::Horizontal, 0);
-    filler.set_hexpand(true);
-    header.append(&filler);
-
-    if let Some(w) = widget {
-        header.append(&w);
+    if let Some(widget) = widget {
+        control.append(&widget);
     }
 
-    item.append(&header);
-    let tut = Label::builder()
-        .label(tutorial)
-        .css_classes(["tutorial-text"])
-        .halign(Align::Start)
-        .wrap(true)
-        .build();
-    item.append(&tut);
-    item
+    let subtitle = if tutorial.is_empty() {
+        None
+    } else {
+        Some(tutorial)
+    };
+    create_settings_row(icon_name, name, subtitle, &control, None, false)
 }
 
 #[derive(Clone, Copy)]
 enum ItemStatus {
     Ok,
     Error,
-    Warning,
-    Info,
 }

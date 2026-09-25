@@ -1,6 +1,7 @@
 use evdev::{
     InputEvent, Key, RelativeAxisType, uinput::VirtualDevice, uinput::VirtualDeviceBuilder,
 };
+use std::time::Duration;
 
 pub fn create_keyboard_device() -> Result<VirtualDevice, String> {
     let mut keys = evdev::AttributeSet::<Key>::new();
@@ -18,7 +19,9 @@ pub fn create_keyboard_device() -> Result<VirtualDevice, String> {
         .with_keys(&keys)
         .map_err(|e: std::io::Error| e.to_string())?
         .build()
-        .map_err(|e: std::io::Error| format!("Keyboard creation failed: {e}. Run: sudo chmod 666 /dev/uinput"))
+        .map_err(|e: std::io::Error| {
+            format!("Keyboard creation failed: {e}. Run: sudo chmod 666 /dev/uinput")
+        })
 }
 
 pub fn create_mouse_device() -> Result<VirtualDevice, String> {
@@ -45,4 +48,14 @@ pub fn emit_key(device: &mut VirtualDevice, key: Key, pressed: bool) -> Result<(
         InputEvent::new(evdev::EventType::KEY, key.code(), i32::from(pressed)),
         InputEvent::new(evdev::EventType::SYNCHRONIZATION, 0, 0),
     ])
+}
+
+pub fn tap_key(
+    device: &mut VirtualDevice,
+    key: Key,
+    hold_duration: Duration,
+) -> Result<(), std::io::Error> {
+    emit_key(device, key, true)?;
+    std::thread::sleep(hold_duration);
+    emit_key(device, key, false)
 }
