@@ -8,6 +8,7 @@ use clap::Parser;
 use gtk::Application;
 use gtk::prelude::*;
 use image::GenericImageView;
+use ksni::blocking::TrayMethods;
 use state::SharedState;
 use std::sync::{Arc, Mutex};
 
@@ -275,9 +276,7 @@ fn main() -> glib::ExitCode {
             tx,
             state: state_ui.clone(),
         };
-        let service = ksni::TrayService::new(tray);
-        let handle = service.handle();
-        service.spawn();
+        let handle = tray.spawn().expect("failed to start tray service");
 
         let state_tray_poll = state_ui.clone();
         let mut last_running = false;

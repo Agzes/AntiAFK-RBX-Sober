@@ -1,8 +1,8 @@
 use crate::input::{create_keyboard_device, emit_key, tap_key};
 use crate::state::{RuntimeStatus, SharedState, set_runtime_status};
 use evdev::{
-    AbsInfo, AbsoluteAxisType, EventType, InputEvent, Key, RelativeAxisType, UinputAbsSetup,
-    uinput::VirtualDevice, uinput::VirtualDeviceBuilder,
+    AbsInfo, AbsoluteAxisCode, EventType, InputEvent, KeyCode, RelativeAxisCode, UinputAbsSetup,
+    uinput::VirtualDevice,
 };
 use image::GenericImageView;
 use std::process::Command;
@@ -73,25 +73,25 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
             }
 
             if s.jump {
-                let _ = emit_key(&mut kb_device, Key::KEY_SPACE, true);
+                let _ = emit_key(&mut kb_device, KeyCode::KEY_SPACE, true);
                 thread::sleep(Duration::from_millis(50));
-                let _ = emit_key(&mut kb_device, Key::KEY_SPACE, false);
+                let _ = emit_key(&mut kb_device, KeyCode::KEY_SPACE, false);
             }
 
             if s.walk {
-                let _ = tap_key(&mut kb_device, Key::KEY_W, Duration::from_millis(200));
+                let _ = tap_key(&mut kb_device, KeyCode::KEY_W, Duration::from_millis(200));
                 thread::sleep(Duration::from_millis(50));
-                let _ = tap_key(&mut kb_device, Key::KEY_S, Duration::from_millis(200));
+                let _ = tap_key(&mut kb_device, KeyCode::KEY_S, Duration::from_millis(200));
             }
 
             if s.spin_jiggle {
-                let _ = emit_key(&mut kb_device, Key::KEY_I, true);
+                let _ = emit_key(&mut kb_device, KeyCode::KEY_I, true);
                 thread::sleep(Duration::from_millis(30));
-                let _ = emit_key(&mut kb_device, Key::KEY_I, false);
+                let _ = emit_key(&mut kb_device, KeyCode::KEY_I, false);
                 thread::sleep(Duration::from_millis(50));
-                let _ = emit_key(&mut kb_device, Key::KEY_O, true);
+                let _ = emit_key(&mut kb_device, KeyCode::KEY_O, true);
                 thread::sleep(Duration::from_millis(30));
-                let _ = emit_key(&mut kb_device, Key::KEY_O, false);
+                let _ = emit_key(&mut kb_device, KeyCode::KEY_O, false);
             }
 
             if s.auto_reconnect
@@ -114,13 +114,13 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                     thread::sleep(Duration::from_millis(200));
                     for _ in 0..3 {
                         let _ = pointer.emit(&[
-                            InputEvent::new(EventType::KEY, Key::BTN_LEFT.0, 1),
-                            InputEvent::new(EventType::SYNCHRONIZATION, 0, 0),
+                            InputEvent::new(EventType::KEY.0, KeyCode::BTN_LEFT.0, 1),
+                            InputEvent::new(EventType::SYNCHRONIZATION.0, 0, 0),
                         ]);
                         thread::sleep(Duration::from_millis(50));
                         let _ = pointer.emit(&[
-                            InputEvent::new(EventType::KEY, Key::BTN_LEFT.0, 0),
-                            InputEvent::new(EventType::SYNCHRONIZATION, 0, 0),
+                            InputEvent::new(EventType::KEY.0, KeyCode::BTN_LEFT.0, 0),
+                            InputEvent::new(EventType::SYNCHRONIZATION.0, 0, 0),
                         ]);
                         thread::sleep(Duration::from_millis(100));
                     }
@@ -161,22 +161,22 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
 
 fn create_pointer_device() -> Result<VirtualDevice, String> {
     let abs_x = UinputAbsSetup::new(
-        AbsoluteAxisType::ABS_X,
+        AbsoluteAxisCode::ABS_X,
         AbsInfo::new(0, 0, ABS_MAX, 0, 0, 0),
     );
     let abs_y = UinputAbsSetup::new(
-        AbsoluteAxisType::ABS_Y,
+        AbsoluteAxisCode::ABS_Y,
         AbsInfo::new(0, 0, ABS_MAX, 0, 0, 0),
     );
 
-    let mut keys = evdev::AttributeSet::<Key>::new();
-    keys.insert(Key::BTN_LEFT);
+    let mut keys = evdev::AttributeSet::<KeyCode>::new();
+    keys.insert(KeyCode::BTN_LEFT);
 
-    let mut rel = evdev::AttributeSet::<RelativeAxisType>::new();
-    rel.insert(RelativeAxisType::REL_X);
-    rel.insert(RelativeAxisType::REL_Y);
+    let mut rel = evdev::AttributeSet::<RelativeAxisCode>::new();
+    rel.insert(RelativeAxisCode::REL_X);
+    rel.insert(RelativeAxisCode::REL_Y);
 
-    VirtualDeviceBuilder::new()
+    VirtualDevice::builder()
         .map_err(|e: std::io::Error| e.to_string())?
         .name("AntiAFK Virtual Pointer")
         .with_keys(&keys)
@@ -201,9 +201,9 @@ fn warp_cursor(device: &mut VirtualDevice, x: i32, y: i32, screen_w: i32, screen
     let abs_y = (y as i64 * ABS_MAX as i64 / screen_h as i64).clamp(0, ABS_MAX as i64) as i32;
 
     let _ = device.emit(&[
-        InputEvent::new(EventType::ABSOLUTE, AbsoluteAxisType::ABS_X.0, abs_x),
-        InputEvent::new(EventType::ABSOLUTE, AbsoluteAxisType::ABS_Y.0, abs_y),
-        InputEvent::new(EventType::SYNCHRONIZATION, 0, 0),
+        InputEvent::new(EventType::ABSOLUTE.0, AbsoluteAxisCode::ABS_X.0, abs_x),
+        InputEvent::new(EventType::ABSOLUTE.0, AbsoluteAxisCode::ABS_Y.0, abs_y),
+        InputEvent::new(EventType::SYNCHRONIZATION.0, 0, 0),
     ]);
 }
 

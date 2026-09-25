@@ -1,6 +1,6 @@
 use crate::input::{create_keyboard_device, create_mouse_device, emit_key, tap_key};
 use crate::state::{RuntimeStatus, SharedState, set_runtime_status};
-use evdev::{Key, uinput::VirtualDevice};
+use evdev::{KeyCode, uinput::VirtualDevice};
 use serde_json::Value;
 use std::process::Command;
 use std::thread;
@@ -158,9 +158,9 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 last_y = cy;
 
                 thread::sleep(Duration::from_millis(50));
-                let _ = emit_key(&mut mouse_device, Key::BTN_LEFT, true);
+                let _ = emit_key(&mut mouse_device, KeyCode::BTN_LEFT, true);
                 thread::sleep(Duration::from_millis(30));
-                let _ = emit_key(&mut mouse_device, Key::BTN_LEFT, false);
+                let _ = emit_key(&mut mouse_device, KeyCode::BTN_LEFT, false);
                 thread::sleep(Duration::from_millis(50));
 
                 if s.auto_reconnect {
@@ -186,9 +186,9 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                         );
                         thread::sleep(Duration::from_millis(100));
                         for _ in 0..3 {
-                            let _ = emit_key(&mut mouse_device, Key::BTN_LEFT, true);
+                            let _ = emit_key(&mut mouse_device, KeyCode::BTN_LEFT, true);
                             thread::sleep(Duration::from_millis(30));
-                            let _ = emit_key(&mut mouse_device, Key::BTN_LEFT, false);
+                            let _ = emit_key(&mut mouse_device, KeyCode::BTN_LEFT, false);
                             thread::sleep(Duration::from_millis(30));
                         }
                         incremental_mouse_move(
@@ -204,17 +204,21 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 }
 
                 if s.jump {
-                    let _ = tap_key(&mut kb_device, Key::KEY_SPACE, Duration::from_millis(30));
+                    let _ = tap_key(
+                        &mut kb_device,
+                        KeyCode::KEY_SPACE,
+                        Duration::from_millis(30),
+                    );
                 }
                 if s.walk {
-                    let _ = tap_key(&mut kb_device, Key::KEY_W, Duration::from_millis(150));
+                    let _ = tap_key(&mut kb_device, KeyCode::KEY_W, Duration::from_millis(150));
                     thread::sleep(Duration::from_millis(50));
-                    let _ = tap_key(&mut kb_device, Key::KEY_S, Duration::from_millis(150));
+                    let _ = tap_key(&mut kb_device, KeyCode::KEY_S, Duration::from_millis(150));
                 }
                 if s.spin_jiggle {
-                    let _ = tap_key(&mut kb_device, Key::KEY_I, Duration::from_millis(30));
+                    let _ = tap_key(&mut kb_device, KeyCode::KEY_I, Duration::from_millis(30));
                     thread::sleep(Duration::from_millis(50));
-                    let _ = tap_key(&mut kb_device, Key::KEY_O, Duration::from_millis(30));
+                    let _ = tap_key(&mut kb_device, KeyCode::KEY_O, Duration::from_millis(30));
                 }
             }
 
