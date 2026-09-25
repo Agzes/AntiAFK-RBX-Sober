@@ -165,10 +165,7 @@ pub fn start_backend(state: SharedState) {
                 let main_pids = get_all_sober_pids(&my_pid);
                 for pid in &main_pids {
                     if let Some(scope) = get_systemd_scope(pid) {
-                        if scope.contains("app")
-                            || scope.contains("sober")
-                            || scope.contains("vinegar")
-                        {
+                        if scope.contains("app") || scope.contains("sober") {
                             current_target_scopes.insert(scope);
                         }
                     }
@@ -251,9 +248,7 @@ fn is_focused_sober() -> bool {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_lowercase();
-                return class.contains("sober")
-                    || class.contains("roblox")
-                    || class.contains("vinegar");
+                return class.contains("sober") || class.contains("roblox");
             }
         }
     } else if is_kde() {
@@ -267,7 +262,7 @@ fn is_focused_sober() -> bool {
                 var title = (w.caption || "").toLowerCase();
                 var app = (w.desktopFileName || "").toLowerCase();
                 var isSober = (cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 || 
-                               cls.indexOf("vinegar") !== -1 || app.indexOf("sober") !== -1) && 
+                               app.indexOf("sober") !== -1) &&
                                title.indexOf("antiafk") === -1;
                 print("ANTIAFK_FOCUS_STATE:" + isSober);
             } else {
@@ -366,7 +361,7 @@ fn get_systemd_scope(pid: &str) -> Option<String> {
 
 fn get_all_sober_pids(exclude_pid: &str) -> Vec<String> {
     let output = Command::new("pgrep")
-        .args(["-if", "sober|roblox|vinegar|Sober.bin"])
+        .args(["-if", "sober|roblox|Sober.bin"])
         .output()
         .ok();
     if let Some(out) = output {

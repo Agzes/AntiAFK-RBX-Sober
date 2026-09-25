@@ -72,7 +72,6 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 }
                 if class.contains("sober")
                     || title.contains("roblox")
-                    || class.contains("vinegar")
                     || class == "sober"
                 {
                     let addr = client

@@ -327,7 +327,7 @@ fn focus_and_get_geometry(qdbus: &str, index: usize) -> Option<(i32, i32, i32, i
             var title = (w.caption || "").toLowerCase();
             var app = (w.desktopFileName || "").toLowerCase();
             if ((cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
-                cls.indexOf("vinegar") !== -1 || app.indexOf("sober") !== -1) &&
+                app.indexOf("sober") !== -1) &&
                 title.indexOf("antiafk") === -1) {{
                 targets.push(w);
             }}
@@ -398,7 +398,7 @@ fn minimize_window_by_index(qdbus: &str, index: usize) {
             var title = (w.caption || "").toLowerCase();
             var app = (w.desktopFileName || "").toLowerCase();
             if ((cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
-                cls.indexOf("vinegar") !== -1 || app.indexOf("sober") !== -1) &&
+                app.indexOf("sober") !== -1) &&
                 title.indexOf("antiafk") === -1) {{
                 targets.push(w);
             }}
@@ -511,7 +511,7 @@ fn get_target_window_count(qdbus: &str) -> usize {
             var title = (w.caption || "").toLowerCase();
             var app = (w.desktopFileName || "").toLowerCase();
             if ((cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
-                cls.indexOf("vinegar") !== -1 || app.indexOf("sober") !== -1) &&
+                app.indexOf("sober") !== -1) &&
                 title.indexOf("antiafk") === -1) {
                 count++;
             }
@@ -553,7 +553,7 @@ fn unminimize_all_target_windows(qdbus: &str) {
             var title = (w.caption || "").toLowerCase();
             var app = (w.desktopFileName || "").toLowerCase();
             if ((cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
-                cls.indexOf("vinegar") !== -1 || app.indexOf("sober") !== -1) &&
+                app.indexOf("sober") !== -1) &&
                 title.indexOf("antiafk") === -1) {
                 if (w.minimized) {
                     w.minimized = false;
