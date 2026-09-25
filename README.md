@@ -4,7 +4,7 @@
     &nbsp;·&nbsp;
     <a href="https://aur.archlinux.org/packages/antiafk-rbx-sober"><kbd>AUR package</kbd></a>
     &nbsp;·&nbsp;
-    <a href="#build-from-source"><kbd>Build from source</kbd></a>
+    <a href="#-build-from-source"><kbd>Build from source</kbd></a>
     &nbsp;·&nbsp;
     <a href="https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=bug_report.md"><kbd>Report a bug</kbd></a>
     &nbsp;·&nbsp;
