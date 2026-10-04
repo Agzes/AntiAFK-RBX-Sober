@@ -1,3 +1,4 @@
+use crate::state::{KEYBOARD_DEVICE, MOUSE_DEVICE};
 use evdev::{InputEvent, KeyCode, RelativeAxisCode, uinput::VirtualDevice};
 use std::time::Duration;
 
@@ -13,7 +14,7 @@ pub fn create_keyboard_device() -> Result<VirtualDevice, String> {
 
     VirtualDevice::builder()
         .map_err(|e: std::io::Error| e.to_string())?
-        .name("AntiAFK Virtual Keyboard")
+        .name(KEYBOARD_DEVICE)
         .with_keys(&keys)
         .map_err(|e: std::io::Error| e.to_string())?
         .build()
@@ -32,7 +33,7 @@ pub fn create_mouse_device() -> Result<VirtualDevice, String> {
 
     VirtualDevice::builder()
         .map_err(|e: std::io::Error| e.to_string())?
-        .name("AntiAFK Virtual Mouse")
+        .name(MOUSE_DEVICE)
         .with_relative_axes(&rel_axes)
         .map_err(|e: std::io::Error| e.to_string())?
         .with_keys(&keys)

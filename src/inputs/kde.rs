@@ -1,15 +1,64 @@
-use crate::input::{create_keyboard_device, emit_key, tap_key};
-use crate::state::{RuntimeStatus, SharedState, set_runtime_status};
-use evdev::{
-    AbsInfo, AbsoluteAxisCode, EventType, InputEvent, KeyCode, RelativeAxisCode, UinputAbsSetup,
-    uinput::VirtualDevice,
+use crate::environment::InputMode;
+use crate::input::create_keyboard_device;
+use crate::inputs::common::{
+    click_pointer, create_pointer_device, find_qdbus, has_recent_input,
+    perform_keyboard_actions_with_durations, reconnect_button, reconnect_pixel_match,
+    responsive_sleep_interval, warp_cursor,
 };
+use crate::state::{APP_SLUG, RuntimeStatus, SELF_MARKER, SharedState, set_runtime_status};
 use image::GenericImageView;
-use std::process::Command;
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+const TARGET_SCRIPT: &str = r#"
+    var isTarget = function (w) {
+        if (!w) { return false; }
+        var cls = (w.resourceClass || "").toLowerCase();
+        var title = (w.caption || "").toLowerCase();
+        var app = (w.desktopFileName || "").toLowerCase();
+        return (cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
+            app.indexOf("sober") !== -1) && title.indexOf("{self_marker}") === -1;
+    };
+    var targets = function () {
+        var windows = workspace.windowList();
+        var found = [];
+        for (var i = 0; i < windows.length; i++) {
+            if (isTarget(windows[i])) { found.push(windows[i]); }
+        }
+        return found;
+    };
+"#;
 
-const ABS_MAX: i32 = 65535;
+fn target_script() -> String {
+    TARGET_SCRIPT.replace("{self_marker}", SELF_MARKER)
+}
+
+struct Geometry {
+    center_x: i32,
+    center_y: i32,
+    width: i32,
+    height: i32,
+    screen_width: i32,
+    screen_height: i32,
+    was_minimized: bool,
+}
+
+fn next_nonce() -> u64 {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let clock = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_nanos() as u64)
+        .unwrap_or_default();
+    clock
+        ^ COUNTER
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+}
 
 pub fn run(state_arc: &SharedState) -> Result<(), String> {
     let qdbus = find_qdbus().ok_or("Neither qdbus6 nor qdbus found.")?;
@@ -27,11 +76,11 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
             set_runtime_status(state_arc, RuntimeStatus::Stopped);
             break;
         }
-        if s.mode != 1 {
+        if s.input_mode() != InputMode::Kde {
             break;
         }
 
-        if s.user_safe && is_user_active_cursor(&qdbus, 3) {
+        if s.user_safe && (has_recent_input(3) || is_user_active_cursor(&qdbus, 3)) {
             set_runtime_status(state_arc, RuntimeStatus::Paused);
             thread::sleep(Duration::from_secs(2));
             continue;
@@ -60,75 +109,63 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
         let initial_window = get_active_window_internal_id(&qdbus);
 
         for i in 0..instance_count {
-            if s.user_safe && is_user_active_cursor(&qdbus, 1) {
+            if s.user_safe && (has_recent_input(1) || is_user_active_cursor(&qdbus, 1)) {
                 break;
             }
 
-            let geo = focus_and_get_geometry(&qdbus, i);
+            let geometry = focus_and_get_geometry(&qdbus, i);
             thread::sleep(Duration::from_millis(300));
 
-            if let Some((target_x, target_y, _win_w, _win_h, screen_w, screen_h)) = geo {
-                warp_cursor(&mut pointer, target_x, target_y, screen_w, screen_h);
+            if let Some(geometry) = geometry.as_ref() {
+                warp_cursor(
+                    &mut pointer,
+                    geometry.center_x,
+                    geometry.center_y,
+                    geometry.screen_width,
+                    geometry.screen_height,
+                );
                 thread::sleep(Duration::from_millis(150));
             }
 
-            if s.jump {
-                let _ = emit_key(&mut kb_device, KeyCode::KEY_SPACE, true);
-                thread::sleep(Duration::from_millis(50));
-                let _ = emit_key(&mut kb_device, KeyCode::KEY_SPACE, false);
-            }
-
-            if s.walk {
-                let _ = tap_key(&mut kb_device, KeyCode::KEY_W, Duration::from_millis(200));
-                thread::sleep(Duration::from_millis(50));
-                let _ = tap_key(&mut kb_device, KeyCode::KEY_S, Duration::from_millis(200));
-            }
-
-            if s.spin_jiggle {
-                let _ = emit_key(&mut kb_device, KeyCode::KEY_I, true);
-                thread::sleep(Duration::from_millis(30));
-                let _ = emit_key(&mut kb_device, KeyCode::KEY_I, false);
-                thread::sleep(Duration::from_millis(50));
-                let _ = emit_key(&mut kb_device, KeyCode::KEY_O, true);
-                thread::sleep(Duration::from_millis(30));
-                let _ = emit_key(&mut kb_device, KeyCode::KEY_O, false);
-            }
+            perform_keyboard_actions_with_durations(
+                &mut kb_device,
+                &s,
+                Duration::from_millis(50),
+                Duration::from_millis(200),
+                Duration::from_millis(50),
+            )?;
 
             if s.auto_reconnect
-                && let Some((target_x, target_y, win_w, win_h, screen_w, screen_h)) = geo
-                && let Some((r, g, b, _px, _py)) = get_pixel_color(win_w as i64, win_h as i64)
+                && let Some(geometry) = geometry.as_ref()
+                && let Some((r, g, b)) = get_pixel_color()
+                && reconnect_pixel_match(r, g, b)
             {
-                let target_r = 57i16;
-                let target_g = 59i16;
-                let target_b = 61i16;
-                let diff = (r as i16 - target_r).abs()
-                    + (g as i16 - target_g).abs()
-                    + (b as i16 - target_b).abs();
-
-                if diff < 15 {
-                    let click_x =
-                        target_x - (win_w / 2) + (win_w - 400) / 2 + (400 - 161 - 27) + (161 / 2);
-                    let click_y =
-                        target_y - (win_h / 2) + (win_h - 250) / 2 + (250 - 34 - 21) + (34 / 2);
-                    warp_cursor(&mut pointer, click_x, click_y, screen_w, screen_h);
-                    thread::sleep(Duration::from_millis(200));
-                    for _ in 0..3 {
-                        let _ = pointer.emit(&[
-                            InputEvent::new(EventType::KEY.0, KeyCode::BTN_LEFT.0, 1),
-                            InputEvent::new(EventType::SYNCHRONIZATION.0, 0, 0),
-                        ]);
-                        thread::sleep(Duration::from_millis(50));
-                        let _ = pointer.emit(&[
-                            InputEvent::new(EventType::KEY.0, KeyCode::BTN_LEFT.0, 0),
-                            InputEvent::new(EventType::SYNCHRONIZATION.0, 0, 0),
-                        ]);
-                        thread::sleep(Duration::from_millis(100));
-                    }
-                    warp_cursor(&mut pointer, target_x, target_y, screen_w, screen_h);
+                let window_x = geometry.center_x - geometry.width / 2;
+                let window_y = geometry.center_y - geometry.height / 2;
+                let (click_x, click_y) =
+                    reconnect_button(window_x, window_y, geometry.width, geometry.height);
+                warp_cursor(
+                    &mut pointer,
+                    click_x,
+                    click_y,
+                    geometry.screen_width,
+                    geometry.screen_height,
+                );
+                thread::sleep(Duration::from_millis(200));
+                for _ in 0..3 {
+                    click_pointer(&mut pointer, Duration::from_millis(50));
+                    thread::sleep(Duration::from_millis(100));
                 }
+                warp_cursor(
+                    &mut pointer,
+                    geometry.center_x,
+                    geometry.center_y,
+                    geometry.screen_width,
+                    geometry.screen_height,
+                );
             }
 
-            if s.stealth {
+            if s.stealth || geometry.is_some_and(|geometry| geometry.was_minimized) {
                 minimize_window_by_index(&qdbus, i);
             }
         }
@@ -149,7 +186,7 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
             state.runtime_status = RuntimeStatus::Ready;
         }
 
-        if responsive_sleep(state_arc, 1) {
+        if responsive_sleep_interval(state_arc, InputMode::Kde) {
             if !state_arc.lock().unwrap().running {
                 set_runtime_status(state_arc, RuntimeStatus::Stopped);
             }
@@ -159,145 +196,49 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
     Ok(())
 }
 
-fn create_pointer_device() -> Result<VirtualDevice, String> {
-    let abs_x = UinputAbsSetup::new(
-        AbsoluteAxisCode::ABS_X,
-        AbsInfo::new(0, 0, ABS_MAX, 0, 0, 0),
-    );
-    let abs_y = UinputAbsSetup::new(
-        AbsoluteAxisCode::ABS_Y,
-        AbsInfo::new(0, 0, ABS_MAX, 0, 0, 0),
-    );
-
-    let mut keys = evdev::AttributeSet::<KeyCode>::new();
-    keys.insert(KeyCode::BTN_LEFT);
-
-    let mut rel = evdev::AttributeSet::<RelativeAxisCode>::new();
-    rel.insert(RelativeAxisCode::REL_X);
-    rel.insert(RelativeAxisCode::REL_Y);
-
-    VirtualDevice::builder()
-        .map_err(|e: std::io::Error| e.to_string())?
-        .name("AntiAFK Virtual Pointer")
-        .with_keys(&keys)
-        .map_err(|e: std::io::Error| e.to_string())?
-        .with_relative_axes(&rel)
-        .map_err(|e: std::io::Error| e.to_string())?
-        .with_absolute_axis(&abs_x)
-        .map_err(|e: std::io::Error| e.to_string())?
-        .with_absolute_axis(&abs_y)
-        .map_err(|e: std::io::Error| e.to_string())?
-        .build()
-        .map_err(|e: std::io::Error| {
-            format!("Pointer device creation failed: {e}. Run: sudo chmod 666 /dev/uinput")
-        })
-}
-
-fn warp_cursor(device: &mut VirtualDevice, x: i32, y: i32, screen_w: i32, screen_h: i32) {
-    if screen_w <= 0 || screen_h <= 0 {
-        return;
-    }
-    let abs_x = (x as i64 * ABS_MAX as i64 / screen_w as i64).clamp(0, ABS_MAX as i64) as i32;
-    let abs_y = (y as i64 * ABS_MAX as i64 / screen_h as i64).clamp(0, ABS_MAX as i64) as i32;
-
-    let _ = device.emit(&[
-        InputEvent::new(EventType::ABSOLUTE.0, AbsoluteAxisCode::ABS_X.0, abs_x),
-        InputEvent::new(EventType::ABSOLUTE.0, AbsoluteAxisCode::ABS_Y.0, abs_y),
-        InputEvent::new(EventType::SYNCHRONIZATION.0, 0, 0),
-    ]);
-}
-
 fn get_current_cursor_pos(qdbus: &str) -> Option<(i32, i32, i32, i32)> {
-    let script = r#"
-        var cp = workspace.cursorPos;
-        var vs = workspace.virtualScreenSize;
-        print("ANTIAFK_POS:" + Math.round(cp.x) + "," + Math.round(cp.y) + "," + vs.width + "," + vs.height);
-    "#;
-
-    run_kwin_script(qdbus, script);
-    thread::sleep(Duration::from_millis(200));
-
-    if let Ok(output) = Command::new("journalctl")
-        .args([
-            "--user",
-            "-n",
-            "30",
-            "--since",
-            "10 seconds ago",
-            "--no-pager",
-            "-o",
-            "cat",
-        ])
-        .output()
-    {
-        let text = String::from_utf8_lossy(&output.stdout);
-        for line in text.lines().rev() {
-            if let Some(pos) = line.find("ANTIAFK_POS:") {
-                let data = &line[pos + 12..];
-                let parts: Vec<&str> = data.split(',').collect();
-                if parts.len() >= 4
-                    && let (Some(x), Some(y), Some(w), Some(h)) = (
-                        parts[0].trim().parse::<i32>().ok(),
-                        parts[1].trim().parse::<i32>().ok(),
-                        parts[2].trim().parse::<i32>().ok(),
-                        parts[3].trim().parse::<i32>().ok(),
-                    )
-                {
-                    return Some((x, y, w, h));
-                }
-            }
-        }
-    }
-    None
+    let value = run_query(qdbus, |marker| {
+        format!(
+            r#"
+            var cp = workspace.cursorPos;
+            var vs = workspace.virtualScreenSize;
+            print("{marker}" + Math.round(cp.x) + "," + Math.round(cp.y) + "," + vs.width + "," + vs.height);
+            "#
+        )
+    })?;
+    let parts = parse_numbers(&value, 4)?;
+    Some((parts[0], parts[1], parts[2], parts[3]))
 }
 
 fn get_active_window_internal_id(qdbus: &str) -> Option<String> {
-    let script = r#"
-        var w = workspace.activeWindow;
-        if (w) {
-            print("ANTIAFK_WIN_ID:" + w.internalId);
-        }
-    "#;
-    run_kwin_script(qdbus, script);
-    thread::sleep(Duration::from_millis(200));
-
-    if let Ok(output) = Command::new("journalctl")
-        .args([
-            "--user",
-            "-n",
-            "20",
-            "--since",
-            "5 seconds ago",
-            "--no-pager",
-            "-o",
-            "cat",
-        ])
-        .output()
-    {
-        let text = String::from_utf8_lossy(&output.stdout);
-        for line in text.lines().rev() {
-            if let Some(pos) = line.find("ANTIAFK_WIN_ID:") {
-                return Some(line[pos + 15..].trim().to_string());
-            }
-        }
-    }
-    None
+    run_query(qdbus, |marker| {
+        format!(
+            r#"
+            var w = workspace.activeWindow;
+            if (w) {{ print("{marker}" + w.internalId); }}
+            "#
+        )
+    })
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty())
 }
 
 fn restore_active_window_by_id(qdbus: &str, win_id: &str) {
-    let script = format!(
-        r#"
-        var windows = workspace.windowList();
-        for (var i = 0; i < windows.length; i++) {{
-            if (windows[i].internalId == "{id}") {{
-                workspace.activeWindow = windows[i];
-                break;
+    run_query(qdbus, |marker| {
+        format!(
+            r#"
+            var windows = workspace.windowList();
+            for (var i = 0; i < windows.length; i++) {{
+                if (windows[i].internalId == "{win_id}") {{
+                    workspace.activeWindow = windows[i];
+                    break;
+                }}
             }}
-        }}
-    "#,
-        id = win_id
-    );
-    run_kwin_script(qdbus, &script);
+            print("{marker}ok");
+            "#,
+            win_id = win_id
+        )
+    });
 }
 
 fn is_user_active_cursor(qdbus: &str, secs: u64) -> bool {
@@ -311,135 +252,234 @@ fn is_user_active_cursor(qdbus: &str, secs: u64) -> bool {
     }
 }
 
-fn focus_and_get_geometry(qdbus: &str, index: usize) -> Option<(i32, i32, i32, i32, i32, i32)> {
-    let script = format!(
-        r#"
-        var windows = workspace.windowList();
-        var targets = [];
-        for (var i = 0; i < windows.length; i++) {{
-            var w = windows[i];
-            var cls = (w.resourceClass || "").toLowerCase();
-            var title = (w.caption || "").toLowerCase();
-            var app = (w.desktopFileName || "").toLowerCase();
-            if ((cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
-                app.indexOf("sober") !== -1) &&
-                title.indexOf("antiafk") === -1) {{
-                targets.push(w);
+fn focus_and_get_geometry(qdbus: &str, index: usize) -> Option<Geometry> {
+    let value = run_query(qdbus, |marker| {
+        format!(
+            r#"
+            {target}
+            var found = targets();
+            if (found.length > {index}) {{
+                var target = found[{index}];
+                var wasMinimized = target.minimized ? 1 : 0;
+                if (target.minimized) {{ target.minimized = false; }}
+                workspace.activeWindow = target;
+                var geo = target.frameGeometry;
+                var vs = workspace.virtualScreenSize;
+                print("{marker}" + Math.round(geo.x + geo.width / 2) + "," +
+                    Math.round(geo.y + geo.height / 2) + "," +
+                    Math.round(geo.width) + "," + Math.round(geo.height) + "," +
+                    vs.width + "," + vs.height + "," + wasMinimized);
             }}
-        }}
-        if (targets.length > {idx}) {{
-            var target = targets[{idx}];
-            if (target.minimized) {{
-                target.minimized = false;
+            "#,
+            target = target_script(),
+            index = index,
+            marker = marker
+        )
+    })?;
+    let parts = parse_numbers(&value, 7)?;
+    Some(Geometry {
+        center_x: parts[0],
+        center_y: parts[1],
+        width: parts[2],
+        height: parts[3],
+        screen_width: parts[4],
+        screen_height: parts[5],
+        was_minimized: parts[6] != 0,
+    })
+}
+
+fn minimize_window_by_index(qdbus: &str, index: usize) {
+    run_query(qdbus, |marker| {
+        format!(
+            r#"
+            {target}
+            var found = targets();
+            if (found.length > {index}) {{
+                found[{index}].minimized = true;
             }}
-            workspace.activeWindow = target;
-            var geo = target.frameGeometry;
-            var vs = workspace.virtualScreenSize;
-            var cx = Math.round(geo.x + geo.width / 2);
-            var cy = Math.round(geo.y + geo.height / 2);
-            print("ANTIAFK_GEO:" + cx + "," + cy + "," + Math.round(geo.width) + "," + Math.round(geo.height) + "," + vs.width + "," + vs.height);
-        }}
-    "#,
-        idx = index
-    );
+            print("{marker}ok");
+            "#,
+            target = target_script(),
+            index = index,
+            marker = marker
+        )
+    });
+}
 
-    run_kwin_script(qdbus, &script);
-    thread::sleep(Duration::from_millis(300));
+pub fn show_sober() -> Result<(), String> {
+    let qdbus = find_qdbus().ok_or("qdbus6 or qdbus is not available")?;
+    unminimize_all_target_windows(&qdbus);
+    if focus_and_get_geometry(&qdbus, 0).is_none() {
+        return Err("Sober window was not found".to_string());
+    }
+    Ok(())
+}
 
-    if let Ok(output) = Command::new("journalctl")
+pub fn hide_sober() -> Result<(), String> {
+    let qdbus = find_qdbus().ok_or("qdbus6 or qdbus is not available")?;
+    if get_target_window_count(&qdbus) == 0 {
+        return Err("Sober window was not found".to_string());
+    }
+    minimize_window_by_index(&qdbus, 0);
+    Ok(())
+}
+
+pub fn focused_is_sober() -> Option<bool> {
+    let qdbus = find_qdbus()?;
+    let value = run_query(&qdbus, |marker| {
+        format!(
+            r#"
+            {target}
+            var active = workspace.activeWindow;
+            print("{marker}" + (isTarget(active) ? "1" : "0"));
+            "#,
+            target = target_script(),
+            marker = marker
+        )
+    })?;
+    match value.trim() {
+        "1" => Some(true),
+        "0" => Some(false),
+        _ => None,
+    }
+}
+
+pub fn script_bridge() -> Result<(), String> {
+    let qdbus = find_qdbus().ok_or("qdbus6 or qdbus is not available")?;
+    match run_query(&qdbus, |marker| format!("print(\"{marker}ok\");")) {
+        Some(_) => Ok(()),
+        None => Err(SCRIPT_LOGGING_HINT.to_string()),
+    }
+}
+
+pub const SCRIPT_LOGGING_HINT: &str = "KWin does not forward script output to the journal. Run systemctl --user set-environment QT_LOGGING_RULES=kwin_*.debug=true and log out and back in.";
+
+pub fn enable_script_logging() -> Result<(), String> {
+    let output = Command::new("systemctl")
+        .args([
+            "--user",
+            "set-environment",
+            "QT_LOGGING_RULES=kwin_*.debug=true",
+        ])
+        .output()
+        .map_err(|error| format!("systemctl failed: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "systemctl could not set the environment: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
+fn parse_numbers(value: &str, expected: usize) -> Option<Vec<i32>> {
+    let numbers = value
+        .split(',')
+        .map(|part| part.trim().parse::<i32>())
+        .collect::<Result<Vec<i32>, _>>()
+        .ok()?;
+    if numbers.len() < expected {
+        return None;
+    }
+    Some(numbers)
+}
+
+static JOURNAL_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+fn journal_cache() -> &'static Mutex<HashMap<String, String>> {
+    JOURNAL_CACHE.get_or_init(|| {
+        let cache = Mutex::new(HashMap::new());
+        thread::Builder::new()
+            .name("antiafk-kde-journal".into())
+            .spawn(|| {
+                let mut child = match Command::new("journalctl")
+                    .args(["--user", "-f", "-n", "0", "-o", "cat"])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .spawn()
+                {
+                    Ok(c) => c,
+                    Err(_) => return,
+                };
+                if let Some(stdout) = child.stdout.take() {
+                    let reader = BufReader::new(stdout);
+                    for line in reader.lines().map_while(Result::ok) {
+                        if let Some(pos) = line.find("ANTIAFK") {
+                            let sub = &line[pos..];
+                            if let Some((prefix, val)) = sub.split_once(':') {
+                                let marker = format!("{prefix}:");
+                                if let Ok(mut map) = journal_cache().lock() {
+                                    map.insert(marker, val.trim().to_string());
+                                    if map.len() > 100 {
+                                        map.clear();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .ok();
+        cache
+    })
+}
+
+fn run_query(qdbus: &str, script: impl FnOnce(&str) -> String) -> Option<String> {
+    let _ = journal_cache();
+    let marker = format!("ANTIAFK{}:", next_nonce());
+    let body = script(&marker);
+    run_kwin_script(qdbus, &body);
+    read_journal_value(&marker)
+}
+
+fn read_journal_value(marker: &str) -> Option<String> {
+    let deadline = Instant::now() + Duration::from_millis(300);
+    while Instant::now() < deadline {
+        if let Ok(mut cache) = journal_cache().lock()
+            && let Some(val) = cache.remove(marker)
+        {
+            return Some(val);
+        }
+        thread::sleep(Duration::from_millis(15));
+    }
+
+    let output = Command::new("journalctl")
         .args([
             "--user",
             "-n",
             "50",
             "--since",
-            "10 seconds ago",
+            "20 seconds ago",
             "--no-pager",
             "-o",
             "cat",
         ])
         .output()
-    {
-        let text = String::from_utf8_lossy(&output.stdout);
-        for line in text.lines().rev() {
-            if let Some(pos) = line.find("ANTIAFK_GEO:") {
-                let data = &line[pos + 12..];
-                let parts: Vec<&str> = data.split(',').collect();
-                if parts.len() >= 6
-                    && let (Some(cx), Some(cy), Some(ww), Some(wh), Some(sw), Some(sh)) = (
-                        parts[0].trim().parse::<i32>().ok(),
-                        parts[1].trim().parse::<i32>().ok(),
-                        parts[2].trim().parse::<i32>().ok(),
-                        parts[3].trim().parse::<i32>().ok(),
-                        parts[4].trim().parse::<i32>().ok(),
-                        parts[5].trim().parse::<i32>().ok(),
-                    )
-                {
-                    return Some((cx, cy, ww, wh, sw, sh));
-                }
-            }
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines().rev() {
+        if let Some(position) = line.find(marker) {
+            return Some(line[position + marker.len()..].trim().to_string());
         }
     }
     None
 }
 
-fn minimize_window_by_index(qdbus: &str, index: usize) {
-    let script = format!(
-        r#"
-        var windows = workspace.windowList();
-        var targets = [];
-        for (var i = 0; i < windows.length; i++) {{
-            var w = windows[i];
-            var cls = (w.resourceClass || "").toLowerCase();
-            var title = (w.caption || "").toLowerCase();
-            var app = (w.desktopFileName || "").toLowerCase();
-            if ((cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
-                app.indexOf("sober") !== -1) &&
-                title.indexOf("antiafk") === -1) {{
-                targets.push(w);
-            }}
-        }}
-        if (targets.length > {idx}) {{
-            targets[{idx}].minimized = true;
-        }}
-    "#,
-        idx = index
-    );
-    run_kwin_script(qdbus, &script);
-}
-
-fn find_qdbus() -> Option<String> {
-    let qdbus6 = Command::new("qdbus6")
-        .arg("--version")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
-    let qdbus = Command::new("qdbus")
-        .arg("--version")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
-
-    if qdbus6 {
-        Some("qdbus6".to_string())
-    } else if qdbus {
-        Some("qdbus".to_string())
-    } else {
-        None
-    }
-}
-
 fn run_kwin_script(qdbus: &str, script: &str) {
-    let script_path = "/tmp/antiafk_kwin_focus.js";
-    if std::fs::write(script_path, script).is_err() {
+    let nonce = next_nonce();
+    let script_name = format!("{SELF_MARKER}_{}_{}", std::process::id(), nonce);
+    let script_path = std::env::temp_dir().join(format!("{script_name}.js"));
+    if std::fs::write(&script_path, script).is_err() {
         return;
     }
+    let script_path_text = script_path.to_string_lossy().to_string();
 
     let _ = Command::new(qdbus)
         .args([
             "org.kde.KWin",
             "/Scripting",
             "org.kde.kwin.Scripting.unloadScript",
-            "antiafk_focus",
+            &script_name,
         ])
         .output();
 
@@ -448,15 +488,15 @@ fn run_kwin_script(qdbus: &str, script: &str) {
             "org.kde.KWin",
             "/Scripting",
             "org.kde.kwin.Scripting.loadScript",
-            script_path,
-            "antiafk_focus",
+            &script_path_text,
+            &script_name,
         ])
         .output();
 
     if let Ok(out) = output {
-        let id_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if let Ok(id) = id_str.parse::<i32>() {
-            let script_obj = format!("/Scripting/Script{}", id);
+        let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !id.is_empty() {
+            let script_obj = format!("/Scripting/Script{id}");
 
             let _ = Command::new(qdbus)
                 .args(["org.kde.KWin", &script_obj, "org.kde.kwin.Script.run"])
@@ -475,96 +515,53 @@ fn run_kwin_script(qdbus: &str, script: &str) {
             "org.kde.KWin",
             "/Scripting",
             "org.kde.kwin.Scripting.unloadScript",
-            "antiafk_focus",
+            &script_name,
         ])
         .output();
-    let _ = std::fs::remove_file(script_path);
-}
-
-fn responsive_sleep(state_arc: &SharedState, mode: usize) -> bool {
-    let interval = { state_arc.lock().unwrap().interval_seq };
-    if interval == 0 {
-        return false;
-    }
-    for _ in 0..interval {
-        thread::sleep(Duration::from_secs(1));
-        let s = { state_arc.lock().unwrap().clone() };
-        if !s.running || s.mode != mode {
-            return true;
-        }
-    }
-    false
+    let _ = std::fs::remove_file(&script_path);
 }
 
 fn get_target_window_count(qdbus: &str) -> usize {
-    let script = r#"
-        var windows = workspace.windowList();
-        var count = 0;
-        for (var i = 0; i < windows.length; i++) {
-            var w = windows[i];
-            var cls = (w.resourceClass || "").toLowerCase();
-            var title = (w.caption || "").toLowerCase();
-            var app = (w.desktopFileName || "").toLowerCase();
-            if ((cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
-                app.indexOf("sober") !== -1) &&
-                title.indexOf("antiafk") === -1) {
-                count++;
-            }
-        }
-        print("ANTIAFK_COUNT:" + count);
-    "#;
-    run_kwin_script(qdbus, script);
-    thread::sleep(Duration::from_millis(200));
-
-    if let Ok(output) = Command::new("journalctl")
-        .args([
-            "--user",
-            "-n",
-            "20",
-            "--since",
-            "5 seconds ago",
-            "--no-pager",
-            "-o",
-            "cat",
-        ])
-        .output()
-    {
-        let text = String::from_utf8_lossy(&output.stdout);
-        for line in text.lines().rev() {
-            if let Some(pos) = line.find("ANTIAFK_COUNT:") {
-                return line[pos + 14..].trim().parse::<usize>().unwrap_or(0);
-            }
-        }
-    }
-    0
+    let value = run_query(qdbus, |marker| {
+        format!(
+            r#"
+            {target}
+            print("{marker}" + targets().length);
+            "#,
+            target = target_script(),
+            marker = marker
+        )
+    });
+    value
+        .as_deref()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(0)
 }
 
 fn unminimize_all_target_windows(qdbus: &str) {
-    let script = r#"
-        var windows = workspace.windowList();
-        for (var i = 0; i < windows.length; i++) {
-            var w = windows[i];
-            var cls = (w.resourceClass || "").toLowerCase();
-            var title = (w.caption || "").toLowerCase();
-            var app = (w.desktopFileName || "").toLowerCase();
-            if ((cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
-                app.indexOf("sober") !== -1) &&
-                title.indexOf("antiafk") === -1) {
-                if (w.minimized) {
-                    w.minimized = false;
-                }
-            }
-        }
-    "#;
-    run_kwin_script(qdbus, script);
+    run_query(qdbus, |marker| {
+        format!(
+            r#"
+            {target}
+            var found = targets();
+            for (var i = 0; i < found.length; i++) {{
+                if (found[i].minimized) {{ found[i].minimized = false; }}
+            }}
+            print("{marker}ok");
+            "#,
+            target = target_script(),
+            marker = marker
+        )
+    });
 }
 
-fn get_pixel_color(_log_w: i64, _log_h: i64) -> Option<(u8, u8, u8, u32, u32)> {
-    let tmp_path = "/tmp/antiafk_win_pixel.png";
-    let _ = std::fs::remove_file(tmp_path);
+fn get_pixel_color() -> Option<(u8, u8, u8)> {
+    let tmp_path = std::env::temp_dir().join(format!("{APP_SLUG}-spectacle.png"));
+    let tmp_arg = tmp_path.to_string_lossy().into_owned();
+    let _ = std::fs::remove_file(&tmp_path);
 
     let status = Command::new("spectacle")
-        .args(["-b", "-n", "-a", "-o", tmp_path])
+        .args(["-b", "-n", "-a", "-o", &tmp_arg])
         .status()
         .ok()?;
 
@@ -572,34 +569,20 @@ fn get_pixel_color(_log_w: i64, _log_h: i64) -> Option<(u8, u8, u8, u32, u32)> {
         return None;
     }
 
-    let img = image::open(tmp_path).ok()?;
-    let _ = std::fs::remove_file(tmp_path);
+    let img = image::open(&tmp_path).ok()?;
+    let _ = std::fs::remove_file(&tmp_path);
 
-    let (phys_w, phys_h) = img.dimensions();
-
-    let start_x = (phys_w as f64 * 0.3) as u32;
-    let end_x = (phys_w as f64 * 0.7) as u32;
-    let start_y = (phys_h as f64 * 0.3) as u32;
-    let end_y = (phys_h as f64 * 0.7) as u32;
-
+    let (width, height) = img.dimensions();
     let step = 15;
 
-    for y in (start_y..end_y).step_by(step) {
-        for x in (start_x..end_x).step_by(step) {
+    for y in (height * 3 / 10..height * 7 / 10).step_by(step) {
+        for x in (width * 3 / 10..width * 7 / 10).step_by(step) {
             let pixel = img.get_pixel(x, y);
-            let r = pixel[0];
-            let g = pixel[1];
-            let b = pixel[2];
-
-            let diff = (r as i16 - 57).abs() + (g as i16 - 59).abs() + (b as i16 - 61).abs();
-            if diff < 15 {
-                return Some((r, g, b, x, y));
+            if reconnect_pixel_match(pixel[0], pixel[1], pixel[2]) {
+                return Some((pixel[0], pixel[1], pixel[2]));
             }
         }
     }
 
-    let cx = phys_w / 2;
-    let cy = phys_h / 2;
-    let cp = img.get_pixel(cx, cy);
-    Some((cp[0], cp[1], cp[2], cx, cy))
+    None
 }

@@ -1,6 +1,11 @@
-use crate::input::{create_keyboard_device, create_mouse_device, emit_key, tap_key};
+use crate::environment::{InputMode, is_hyprland};
+use crate::input::{create_keyboard_device, create_mouse_device, emit_key};
+use crate::inputs::common::{
+    is_sober_metadata, perform_keyboard_actions, reconnect_button, reconnect_pixel_match,
+    reconnect_probe, responsive_sleep, responsive_sleep_interval,
+};
 use crate::state::{RuntimeStatus, SharedState, set_runtime_status};
-use evdev::{KeyCode, uinput::VirtualDevice};
+use evdev::KeyCode;
 use serde_json::Value;
 use std::process::Command;
 use std::thread;
@@ -16,16 +21,21 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
     loop {
         let s = { state_arc.lock().unwrap().clone() };
         if !s.running {
+            if s.stealth {
+                restore_hidden_windows();
+            }
             set_runtime_status(state_arc, RuntimeStatus::Stopped);
             break;
         }
-        if s.mode != 0 {
+        if s.input_mode() != InputMode::Hyprland {
             break;
         }
 
         if s.user_safe && is_user_active_info(3).0 {
             set_runtime_status(state_arc, RuntimeStatus::Paused);
-            thread::sleep(Duration::from_secs(5));
+            if responsive_sleep(state_arc, InputMode::Hyprland, 5) {
+                break;
+            }
             continue;
         }
 
@@ -37,6 +47,17 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
             serde_json::from_slice(&cursor_output.stdout).unwrap_or(Value::Null);
         let orig_x = cursor_json.get("x").and_then(|v| v.as_i64()).unwrap_or(0);
         let orig_y = cursor_json.get("y").and_then(|v| v.as_i64()).unwrap_or(0);
+
+        let prev_window = Command::new("hyprctl")
+            .args(["activewindow", "-j"])
+            .output()
+            .ok()
+            .and_then(|out| serde_json::from_slice::<Value>(&out.stdout).ok())
+            .and_then(|json| {
+                json.get("address")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            });
 
         let clients_output = Command::new("hyprctl")
             .args(["clients", "-j"])
@@ -70,7 +91,7 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 if pid == my_pid {
                     continue;
                 }
-                if class.contains("sober") || title.contains("roblox") || class == "sober" {
+                if is_sober_metadata(None, Some(&class), Some(&title)) {
                     let addr = client
                         .get("address")
                         .and_then(|v| v.as_str())
@@ -78,10 +99,10 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                     let at = client.get("at").and_then(|v| v.as_array());
                     let size = client.get("size").and_then(|v| v.as_array());
                     if let (Some(a), Some(p), Some(s)) = (addr, at, size) {
-                        let x = p[0].as_i64().unwrap_or(0);
-                        let y = p[1].as_i64().unwrap_or(0);
-                        let w = s[0].as_i64().unwrap_or(1);
-                        let h = s[1].as_i64().unwrap_or(1);
+                        let x = p.first().and_then(|v| v.as_i64()).unwrap_or(0);
+                        let y = p.get(1).and_then(|v| v.as_i64()).unwrap_or(0);
+                        let w = s.first().and_then(|v| v.as_i64()).unwrap_or(1);
+                        let h = s.get(1).and_then(|v| v.as_i64()).unwrap_or(1);
                         target_windows.push((a, x, y, w, h, workspace.to_string()));
                     }
                 }
@@ -90,7 +111,9 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
 
         if target_windows.is_empty() {
             set_runtime_status(state_arc, RuntimeStatus::WaitingForSober);
-            thread::sleep(Duration::from_secs(2));
+            if responsive_sleep(state_arc, InputMode::Hyprland, 2) {
+                break;
+            }
             continue;
         }
 
@@ -105,8 +128,8 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
         }
         thread::sleep(Duration::from_secs(1));
 
-        let mut last_x = orig_x;
-        let mut last_y = orig_y;
+        let mut last_x = orig_x as i32;
+        let mut last_y = orig_y as i32;
 
         for (addr, _wx, _wy, _ww, _wh, ws) in target_windows {
             if s.stealth {
@@ -136,14 +159,17 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 if let Some(arr) = json.as_array() {
                     for c in arr {
                         if c.get("address").and_then(|v| v.as_str()) == Some(&addr) {
-                            let at = c.get("at").and_then(|v| v.as_array()).unwrap();
-                            let size = c.get("size").and_then(|v| v.as_array()).unwrap();
-                            found_pos = (
-                                at[0].as_i64().unwrap_or(0),
-                                at[1].as_i64().unwrap_or(0),
-                                size[0].as_i64().unwrap_or(1),
-                                size[1].as_i64().unwrap_or(1),
-                            );
+                            if let (Some(at), Some(size)) = (
+                                c.get("at").and_then(|v| v.as_array()),
+                                c.get("size").and_then(|v| v.as_array()),
+                            ) {
+                                found_pos = (
+                                    at.first().and_then(|v| v.as_i64()).unwrap_or(0),
+                                    at.get(1).and_then(|v| v.as_i64()).unwrap_or(0),
+                                    size.first().and_then(|v| v.as_i64()).unwrap_or(1),
+                                    size.get(1).and_then(|v| v.as_i64()).unwrap_or(1),
+                                );
+                            }
                             break;
                         }
                     }
@@ -151,9 +177,9 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
             }
 
             if found_pos.2 > 0 {
-                let cx = found_pos.0 + found_pos.2 / 2;
-                let cy = found_pos.1 + found_pos.3 / 2;
-                incremental_mouse_move(&mut mouse_device, last_x, last_y, cx, cy, 5, 30);
+                let cx = (found_pos.0 + found_pos.2 / 2) as i32;
+                let cy = (found_pos.1 + found_pos.3 / 2) as i32;
+                incremental_mouse_move(last_x, last_y, cx, cy, 3, 30);
                 last_x = cx;
                 last_y = cy;
 
@@ -164,26 +190,20 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 thread::sleep(Duration::from_millis(50));
 
                 if s.auto_reconnect {
-                    let check_x = found_pos.0 + (found_pos.2 - 400) / 2 + 10;
-                    let check_y = found_pos.1 + (found_pos.3 - 250) / 2 + 10;
+                    let (window_x, window_y, window_w, window_h) = (
+                        found_pos.0 as i32,
+                        found_pos.1 as i32,
+                        found_pos.2 as i32,
+                        found_pos.3 as i32,
+                    );
+                    let (check_x, check_y) =
+                        reconnect_probe(window_x, window_y, window_w, window_h);
                     if let Some((r, g, b)) = get_pixel_color(check_x, check_y)
-                        && r == 57
-                        && g == 59
-                        && b == 61
+                        && reconnect_pixel_match(r, g, b)
                     {
-                        let target_x =
-                            found_pos.0 + (found_pos.2 - 400) / 2 + (400 - 161 - 27) + (161 / 2);
-                        let target_y =
-                            found_pos.1 + (found_pos.3 - 250) / 2 + (250 - 34 - 21) + (34 / 2);
-                        incremental_mouse_move(
-                            &mut mouse_device,
-                            cx,
-                            cy,
-                            target_x,
-                            target_y,
-                            15,
-                            100,
-                        );
+                        let (target_x, target_y) =
+                            reconnect_button(window_x, window_y, window_w, window_h);
+                        incremental_mouse_move(cx, cy, target_x, target_y, 3, 80);
                         thread::sleep(Duration::from_millis(100));
                         for _ in 0..3 {
                             let _ = emit_key(&mut mouse_device, KeyCode::BTN_LEFT, true);
@@ -191,35 +211,11 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                             let _ = emit_key(&mut mouse_device, KeyCode::BTN_LEFT, false);
                             thread::sleep(Duration::from_millis(30));
                         }
-                        incremental_mouse_move(
-                            &mut mouse_device,
-                            target_x,
-                            target_y,
-                            cx,
-                            cy,
-                            10,
-                            80,
-                        );
+                        incremental_mouse_move(target_x, target_y, cx, cy, 3, 60);
                     }
                 }
 
-                if s.jump {
-                    let _ = tap_key(
-                        &mut kb_device,
-                        KeyCode::KEY_SPACE,
-                        Duration::from_millis(30),
-                    );
-                }
-                if s.walk {
-                    let _ = tap_key(&mut kb_device, KeyCode::KEY_W, Duration::from_millis(150));
-                    thread::sleep(Duration::from_millis(50));
-                    let _ = tap_key(&mut kb_device, KeyCode::KEY_S, Duration::from_millis(150));
-                }
-                if s.spin_jiggle {
-                    let _ = tap_key(&mut kb_device, KeyCode::KEY_I, Duration::from_millis(30));
-                    thread::sleep(Duration::from_millis(50));
-                    let _ = tap_key(&mut kb_device, KeyCode::KEY_O, Duration::from_millis(30));
-                }
+                let _ = perform_keyboard_actions(&mut kb_device, &s);
             }
 
             if s.stealth {
@@ -242,29 +238,110 @@ pub fn run(state_arc: &SharedState) -> Result<(), String> {
                 &orig_y.to_string(),
             ])
             .output();
+        if let Some(prev_addr) = prev_window {
+            let _ = Command::new("hyprctl")
+                .args(["dispatch", "focuswindow", &format!("address:{prev_addr}")])
+                .output();
+        }
         {
             let mut state = state_arc.lock().unwrap();
             state.action_active = false;
             state.runtime_status = RuntimeStatus::Ready;
         }
 
-        if responsive_sleep(state_arc, 0) {
-            if !state_arc.lock().unwrap().running {
+        if responsive_sleep_interval(state_arc, InputMode::Hyprland) {
+            let s = { state_arc.lock().unwrap().clone() };
+            if !s.running {
+                if s.stealth {
+                    restore_hidden_windows();
+                }
                 set_runtime_status(state_arc, RuntimeStatus::Stopped);
             }
             break;
         }
     }
+    let s = { state_arc.lock().unwrap().clone() };
+    if s.stealth {
+        restore_hidden_windows();
+    }
     Ok(())
 }
 
-fn is_hyprland() -> bool {
-    crate::state::AppState::is_hyprland()
+pub fn show_sober() -> Result<(), String> {
+    let clients_output = Command::new("hyprctl")
+        .args(["clients", "-j"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let clients: Value = serde_json::from_slice(&clients_output.stdout).unwrap_or(Value::Null);
+    let mut found = false;
+    if let Some(arr) = clients.as_array() {
+        for c in arr {
+            let class = c.get("class").and_then(|v| v.as_str()).unwrap_or("");
+            let title = c.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            if is_sober_metadata(None, Some(class), Some(title))
+                && let Some(addr) = c.get("address").and_then(|v| v.as_str())
+            {
+                let _ = Command::new("hyprctl")
+                    .args([
+                        "dispatch",
+                        "movetoworkspace",
+                        &format!("current,address:{addr}"),
+                    ])
+                    .output();
+                let _ = Command::new("hyprctl")
+                    .args(["dispatch", "focuswindow", &format!("address:{addr}")])
+                    .output();
+                found = true;
+            }
+        }
+    }
+    if !found {
+        return Err("Sober window was not found.".to_string());
+    }
+    Ok(())
+}
+
+pub fn hide_sober() -> Result<(), String> {
+    let clients_output = Command::new("hyprctl")
+        .args(["clients", "-j"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let clients: Value = serde_json::from_slice(&clients_output.stdout).unwrap_or(Value::Null);
+    let mut found = false;
+    if let Some(arr) = clients.as_array() {
+        for c in arr {
+            let class = c.get("class").and_then(|v| v.as_str()).unwrap_or("");
+            let title = c.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            if is_sober_metadata(None, Some(class), Some(title))
+                && let Some(addr) = c.get("address").and_then(|v| v.as_str())
+            {
+                let _ = Command::new("hyprctl")
+                    .args([
+                        "dispatch",
+                        "movetoworkspacesilent",
+                        &format!("special,address:{addr}"),
+                    ])
+                    .output();
+                found = true;
+            }
+        }
+    }
+    if !found {
+        return Err("Sober window was not found.".to_string());
+    }
+    Ok(())
+}
+
+pub fn restore_hidden_windows() {
+    let _ = show_sober();
 }
 
 fn is_user_active_info(secs: u64) -> (bool, Option<(String, String, String)>) {
     if !is_hyprland() {
         return (false, None);
+    }
+    if crate::inputs::common::has_recent_input(secs) {
+        return (true, None);
     }
     let get_cursor = || {
         Command::new("hyprctl")
@@ -282,7 +359,7 @@ fn is_user_active_info(secs: u64) -> (bool, Option<(String, String, String)>) {
     (s_pos != e_pos, None)
 }
 
-fn get_pixel_color(x: i64, y: i64) -> Option<(u8, u8, u8)> {
+fn get_pixel_color(x: i32, y: i32) -> Option<(u8, u8, u8)> {
     let output = Command::new("grim")
         .args(["-t", "ppm", "-g", &format!("{x},{y} 1x1"), "-"])
         .output()
@@ -295,22 +372,16 @@ fn get_pixel_color(x: i64, y: i64) -> Option<(u8, u8, u8)> {
     None
 }
 
-fn incremental_mouse_move(
-    _dev: &mut VirtualDevice,
-    s_x: i64,
-    s_y: i64,
-    e_x: i64,
-    e_y: i64,
-    steps: i32,
-    dur: u64,
-) {
+fn incremental_mouse_move(s_x: i32, s_y: i32, e_x: i32, e_y: i32, steps: u32, dur: u64) {
     if s_x == e_x && s_y == e_y {
         return;
     }
+    let steps = steps.clamp(1, 5);
+    let slice = dur / steps as u64;
     for i in 1..=steps {
         let p = i as f64 / steps as f64;
-        let cur_x = s_x + ((e_x - s_x) as f64 * p) as i64;
-        let cur_y = s_y + ((e_y - s_y) as f64 * p) as i64;
+        let cur_x = s_x + ((e_x - s_x) as f64 * p) as i32;
+        let cur_y = s_y + ((e_y - s_y) as f64 * p) as i32;
         let _ = Command::new("hyprctl")
             .args([
                 "dispatch",
@@ -319,20 +390,8 @@ fn incremental_mouse_move(
                 &cur_y.to_string(),
             ])
             .output();
-        if dur > 0 {
-            thread::sleep(Duration::from_millis(dur / steps as u64));
+        if dur > 0 && slice > 0 {
+            thread::sleep(Duration::from_millis(slice));
         }
     }
-}
-
-fn responsive_sleep(state_arc: &SharedState, mode: usize) -> bool {
-    let interval = state_arc.lock().unwrap().interval_seq;
-    for _ in 0..interval {
-        thread::sleep(Duration::from_secs(1));
-        let s = state_arc.lock().unwrap().clone();
-        if !s.running || s.mode != mode {
-            return true;
-        }
-    }
-    false
 }
