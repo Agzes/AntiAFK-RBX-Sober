@@ -1,9 +1,17 @@
+use crate::environment::{InputMode, detect_mode};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 pub const APP_ID: &str = "dev.agzes.antiafk-rbx-sober";
+pub const APP_TITLE: &str = "AntiAFK-RBX-Sober";
+pub const APP_SLUG: &str = "antiafk-rbx-sober";
+pub const SELF_MARKER: &str = "antiafk";
+pub const KEYBOARD_DEVICE: &str = "AntiAFK-RBX-Sober Virtual Keyboard";
+pub const MOUSE_DEVICE: &str = "AntiAFK-RBX-Sober Virtual Mouse";
+pub const POINTER_DEVICE: &str = "AntiAFK-RBX-Sober Virtual Pointer";
+pub const ABSOLUTE_MOUSE_DEVICE: &str = "AntiAFK-RBX-Sober Virtual Absolute Mouse";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum RuntimeStatus {
@@ -13,6 +21,10 @@ pub enum RuntimeStatus {
     Ready,
     Paused,
     PerformingAction,
+    ReconnectChecking,
+    ReconnectFound,
+    Reconnecting,
+    ReconnectNotFound,
     Error,
 }
 
@@ -36,6 +48,12 @@ pub struct AppState {
     pub stealth: bool,
     pub last_run_version: Option<String>,
     pub shown_warning: bool,
+    #[serde(default = "default_theme_sync")]
+    pub theme_sync: bool,
+    #[serde(default = "default_theme_dark")]
+    pub theme_dark: bool,
+    #[serde(default)]
+    pub system_colors: bool,
     #[serde(skip)]
     pub manually_stopped: bool,
     #[serde(skip)]
@@ -44,6 +62,14 @@ pub struct AppState {
     pub runtime_status: RuntimeStatus,
     #[serde(skip)]
     pub error_message: Option<String>,
+}
+
+fn default_theme_sync() -> bool {
+    true
+}
+
+fn default_theme_dark() -> bool {
+    true
 }
 
 impl Default for AppState {
@@ -65,6 +91,9 @@ impl Default for AppState {
             stealth: false,
             last_run_version: None,
             shown_warning: false,
+            theme_sync: true,
+            theme_dark: true,
+            system_colors: false,
             manually_stopped: false,
             action_active: false,
             runtime_status: RuntimeStatus::Stopped,
@@ -95,7 +124,7 @@ pub fn set_runtime_error(state: &SharedState, message: impl Into<String>) {
 impl AppState {
     fn get_config_path() -> Option<PathBuf> {
         let mut path = dirs::config_dir()?;
-        path.push("antiafk-rbx-sober");
+        path.push(APP_SLUG);
         if !path.exists() {
             let _ = fs::create_dir_all(&path);
         }
@@ -131,6 +160,10 @@ impl AppState {
         }
     }
 
+    pub fn input_mode(&self) -> InputMode {
+        InputMode::from_legacy(self.mode)
+    }
+
     pub fn load() -> Self {
         let mut state = if let Some(path) = Self::get_config_path()
             && let Ok(data) = fs::read_to_string(path)
@@ -142,31 +175,8 @@ impl AppState {
             Self::default()
         };
 
-        let detected = Self::detect_de_mode();
-        state.mode = detected;
-
+        state.mode = detect_mode().as_legacy();
         state
-    }
-
-    fn detect_de_mode() -> usize {
-        if Self::is_hyprland() {
-            0
-        } else if Self::is_kde() {
-            1
-        } else {
-            2
-        }
-    }
-
-    pub fn is_hyprland() -> bool {
-        std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok()
-    }
-
-    pub fn is_kde() -> bool {
-        std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| {
-            let v = v.to_uppercase();
-            v.contains("KDE") || v.contains("PLASMA")
-        }) || std::env::var("KDE_FULL_SESSION").is_ok()
     }
 
     pub fn save(&self) {
@@ -205,6 +215,15 @@ mod tests {
 
         let state = AppState::deserialize_config(&config.to_string()).unwrap();
         assert!(state.stealth);
+    }
+
+    #[test]
+    fn legacy_config_defaults_to_system_theme_sync() {
+        let mut config = serde_json::to_value(AppState::default()).unwrap();
+        config.as_object_mut().unwrap().remove("theme_sync");
+
+        let state: AppState = serde_json::from_value(config).unwrap();
+        assert!(state.theme_sync);
     }
 
     #[test]
