@@ -1,0 +1,183 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - "v.*"
+
+permissions:
+    contents: write
+
+concurrency:
+    group: release-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: false
+
+env:
+    CARGO_TERM_COLOR: always
+    CARGO_INCREMENTAL: 0
+
+jobs:
+    build:
+        name: Build (${{ matrix.name }})
+        runs-on: ${{ matrix.os }}
+
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - name: linux
+                      os: ubuntu-latest
+                      artifact-name: AntiAFK-RBX-Sober-linux
+
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+            - name: Install Linux build dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y --no-install-recommends \
+                    build-essential \
+                    libdbus-1-dev \
+                    libgtk-4-dev \
+                    pkg-config \
+                    libfuse2 \
+                    wget \
+                    file
+
+            - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+              with:
+                  components: clippy, rustfmt
+
+            - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+            - name: Rust format check
+              run: cargo fmt --all -- --check
+
+            - name: Rust clippy
+              run: cargo clippy --all-targets --locked -- -D warnings
+
+            - name: Rust tests
+              run: cargo test --locked
+
+            - name: Install cargo-appimage and appimagetool
+              run: |
+                  cargo install cargo-appimage --locked
+                  sudo wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
+                  sudo chmod +x /usr/local/bin/appimagetool
+                  # Patch appimagetool magic bytes to run without FUSE requirement inside container runner
+                  sudo sed -i 's|AI\x02|\x00\x00\x00|' /usr/local/bin/appimagetool
+
+            - name: Build release binary
+              run: cargo build --release --locked
+
+            - name: Build AppImage
+              env:
+                  APPIMAGE_EXTRACT_AND_RUN: 1
+              run: cargo appimage
+
+            - name: Upload build output
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: ${{ matrix.artifact-name }}
+                  if-no-files-found: error
+                  path: |
+                      target/release/AntiAFK-RBX-Sober
+                      *.AppImage
+
+    publish:
+        name: Publish GitHub Release
+        runs-on: ubuntu-latest
+        needs: build
+
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+            - name: Download build artifacts
+              uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+              with:
+                  path: release-downloads
+
+            - name: Prepare release body and assets
+              id: release_meta
+              shell: pwsh
+              run: |
+                  $tag = "${{ github.ref_name }}"
+                  $versionTag = $tag
+                  $assetVersion = $versionTag -replace '^v\.?', ''
+                  "name=$tag $([char]0x2022) AntiAFK-RBX-Sober" >> $env:GITHUB_OUTPUT
+
+                  $changelogContent = Get-Content "CHANGELOG.md" -Raw
+                  $parts = $changelogContent -split "(?m)^---`r?`$"
+                  $firstSection = $parts[0].Trim()
+                  $changelogLines = $firstSection -split "`r?`n" | Where-Object { $_ -notmatch '^#\s+Changelog' }
+                  $changelog = ($changelogLines -join "`n").Trim()
+
+                  @"
+                  <div align="center">
+                    <p>
+                      <a href="https://aur.archlinux.org/packages/antiafk-rbx-sober"><kbd>AUR package</kbd></a>
+                      &nbsp;·&nbsp;
+                      <a href="#-build-from-source"><kbd>Build from source</kbd></a>
+                      &nbsp;·&nbsp;
+                      <a href="https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=bug_report.yml"><kbd>Report a bug</kbd></a>
+                      &nbsp;·&nbsp;
+                      <a href="https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=feature_request.yml"><kbd>Request a feature</kbd></a>
+                    </p>
+                    <h1><img height="24" alt="AntiAFK-RBX-Sober logo" src="https://raw.githubusercontent.com/Agzes/AntiAFK-RBX-Sober/refs/heads/main/assets/logo.png"/> AntiAFK-RBX-Sober <sup><kbd>v.1.0</kbd></sup> </h1>
+                    <p>
+                      A native Linux desktop utility for keeping Sober sessions active. <br>
+                      <strong>Compatibility:</strong> <a href="docs/hyprland.md">Hyprland</a>, <a href="docs/kde.md">KDE Plasma 6</a>, <a href="docs/gnome.md">GNOME</a>, <a href="docs/niri.md">Niri</a>, <a href="docs/cosmic.md">COSMIC</a>, <a href="docs/x11.md">X11</a>, and <a href="docs/i3.md">i3</a>.
+                    </p>
+                  </div>
+
+                  ---
+
+                  $changelog
+                  "@ | Set-Content -Path release-body.md -Encoding UTF8
+
+                  New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+
+                  # Copy and rename AppImage
+                  $appimage = Get-ChildItem release-downloads -Recurse -File | Where-Object { $_.Name -match '\.AppImage$' } | Select-Object -First 1
+                  if ($appimage) {
+                    Copy-Item $appimage.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-x86_64.AppImage")
+                  }
+
+                  # Copy standalone binary
+                  $binary = Get-ChildItem release-downloads -Recurse -File | Where-Object { $_.Name -eq "AntiAFK-RBX-Sober" } | Select-Object -First 1
+                  if ($binary) {
+                    Copy-Item $binary.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-x86_64-linux")
+                  }
+
+                  if (-not (Get-ChildItem release-assets -File)) {
+                    throw "No release assets were found after filtering."
+                  }
+
+                  $assetOrder = @(
+                    "AntiAFK-RBX-Sober-$assetVersion-x86_64.AppImage",
+                    "AntiAFK-RBX-Sober-$assetVersion-x86_64-linux"
+                  )
+
+                  $assetOrder |
+                    Where-Object { Test-Path (Join-Path "release-assets" $_) } |
+                    ForEach-Object {
+                      $filePath = Join-Path "release-assets" $_
+                      $hash = (Get-FileHash $filePath -Algorithm SHA256).Hash.ToLowerInvariant()
+                      "$hash  $_"
+                    } |
+                    Set-Content -Path release-assets/SHA256SUMS.txt -Encoding ASCII
+
+                  "files<<EOF" >> $env:GITHUB_OUTPUT
+                  $assetOrder |
+                    Where-Object { Test-Path (Join-Path "release-assets" $_) } |
+                    ForEach-Object { "release-assets/$_" >> $env:GITHUB_OUTPUT }
+                  "release-assets/SHA256SUMS.txt" >> $env:GITHUB_OUTPUT
+                  "EOF" >> $env:GITHUB_OUTPUT
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+              with:
+                  name: ${{ steps.release_meta.outputs.name }}
+                  body_path: release-body.md
+                  prerelease: false
+                  files: ${{ steps.release_meta.outputs.files }}

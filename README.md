@@ -6,9 +6,9 @@
     &nbsp;·&nbsp;
     <a href="#-build-from-source"><kbd>Build from source</kbd></a>
     &nbsp;·&nbsp;
-    <a href="https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=bug_report.md"><kbd>Report a bug</kbd></a>
+    <a href="https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=bug_report.yml"><kbd>Report a bug</kbd></a>
     &nbsp;·&nbsp;
-    <a href="https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=feature_request.md"><kbd>Request a feature</kbd></a>
+    <a href="https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=feature_request.yml"><kbd>Request a feature</kbd></a>
   </p>
   <h1><img height="24" alt="AntiAFK-RBX-Sober logo" src="https://raw.githubusercontent.com/Agzes/AntiAFK-RBX-Sober/refs/heads/main/assets/logo.png"/> AntiAFK-RBX-Sober <sup><kbd>v.1.0</kbd></sup> </h1>
   <p>
