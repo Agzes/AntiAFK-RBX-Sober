@@ -608,12 +608,11 @@ pub fn run(state: &SharedState) -> Result<(), String> {
             if let Some((pcx, pcy)) = prev_center {
                 warp_cursor(&mut pointer, pcx, pcy, layout.width, layout.height);
             }
-        } else if settings.stealth {
-            if let Ok(wins) = windows()
-                && let Some(other) = wins.into_iter().find(|w| !sober_window(w))
-            {
-                let _ = focus_window(other.id);
-            }
+        } else if settings.stealth
+            && let Ok(wins) = windows()
+            && let Some(other) = wins.into_iter().find(|w| !sober_window(w))
+        {
+            let _ = focus_window(other.id);
         }
         set_action_active(state, false);
 
