@@ -144,7 +144,7 @@ jobs:
                       &nbsp;·&nbsp;
                       <a href="https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=feature_request.yml"><kbd>Request a feature</kbd></a>
                     </p>
-                    <h1><img height="24" alt="AntiAFK-RBX-Sober logo" src="https://raw.githubusercontent.com/Agzes/AntiAFK-RBX-Sober/refs/heads/main/assets/logo.png"/> AntiAFK-RBX-Sober <sup><kbd>v.1.0</kbd></sup> </h1>
+                    <h1><img height="24" alt="AntiAFK-RBX-Sober logo" src="https://raw.githubusercontent.com/Agzes/AntiAFK-RBX-Sober/refs/heads/main/assets/logo.png"/> AntiAFK-RBX-Sober <sup><kbd>$versionTag</kbd></sup> </h1>
                     <p>
                       A native Linux desktop utility for keeping Sober sessions active. <br>
                       <strong>Compatibility:</strong> <a href="docs/hyprland.md">Hyprland</a>, <a href="docs/kde.md">KDE Plasma 6</a>, <a href="docs/gnome.md">GNOME</a>, <a href="docs/niri.md">Niri</a>, <a href="docs/cosmic.md">COSMIC</a>, <a href="docs/x11.md">X11</a>, and <a href="docs/i3.md">i3</a>.
