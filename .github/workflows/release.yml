@@ -121,6 +121,7 @@ jobs:
                   }
                   $versionTag = $tag
                   $assetVersion = $versionTag -replace '^v\.?', ''
+                  "tag=$tag" >> $env:GITHUB_OUTPUT
                   "name=$tag $([char]0x2022) AntiAFK-RBX-Sober" >> $env:GITHUB_OUTPUT
 
                   $changelogContent = Get-Content "CHANGELOG.md" -Raw
@@ -208,7 +209,7 @@ jobs:
             - name: Create or Update GitHub Release
               uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
               with:
-                  tag_name: ${{ steps.release_meta.outputs.name -replace '\s+•.*$', '' }}
+                  tag_name: ${{ steps.release_meta.outputs.tag }}
                   name: ${{ steps.release_meta.outputs.name }}
                   body_path: release-body.md
                   prerelease: false
