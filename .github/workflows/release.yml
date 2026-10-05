@@ -4,6 +4,12 @@ on:
     push:
         tags:
             - "v.*"
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: "Release tag (e.g. v.1.0.0)"
+                required: true
+                type: string
 
 permissions:
     contents: write
@@ -37,9 +43,6 @@ jobs:
                   sudo apt-get update
                   sudo apt-get install -y --no-install-recommends \
                     build-essential \
-                    libdbus-1-dev \
-                    libgtk-4-dev \
-                    pkg-config \
                     libfuse2 \
                     wget \
                     file
@@ -59,12 +62,15 @@ jobs:
             - name: Rust tests
               run: cargo test --locked
 
-            - name: Install cargo-appimage and appimagetool
+            - name: Install packaging tools
+              uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+              with:
+                  tool: cargo-deb,cargo-generate-rpm,cargo-appimage
+
+            - name: Install appimagetool
               run: |
-                  cargo install cargo-appimage --locked
                   sudo wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
                   sudo chmod +x /usr/local/bin/appimagetool
-                  # Patch appimagetool magic bytes to run without FUSE requirement inside container runner
                   sudo sed -i 's|AI\x02|\x00\x00\x00|' /usr/local/bin/appimagetool
 
             - name: Build release binary
@@ -75,6 +81,12 @@ jobs:
                   APPIMAGE_EXTRACT_AND_RUN: 1
               run: cargo appimage
 
+            - name: Build Debian package
+              run: cargo deb --no-build
+
+            - name: Build RPM package
+              run: cargo generate-rpm
+
             - name: Upload build output
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
               with:
@@ -83,6 +95,8 @@ jobs:
                   path: |
                       target/release/AntiAFK-RBX-Sober
                       *.AppImage
+                      target/debian/*.deb
+                      target/generate-rpm/*.rpm
 
     publish:
         name: Publish GitHub Release
@@ -102,6 +116,9 @@ jobs:
               shell: pwsh
               run: |
                   $tag = "${{ github.ref_name }}"
+                  if ($tag -notmatch '^v\.') {
+                    $tag = "${{ inputs.tag }}"
+                  }
                   $versionTag = $tag
                   $assetVersion = $versionTag -replace '^v\.?', ''
                   "name=$tag $([char]0x2022) AntiAFK-RBX-Sober" >> $env:GITHUB_OUTPUT
@@ -143,6 +160,18 @@ jobs:
                     Copy-Item $appimage.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-x86_64.AppImage")
                   }
 
+                  # Copy and rename deb package
+                  $deb = Get-ChildItem release-downloads -Recurse -File | Where-Object { $_.Name -match '\.deb$' } | Select-Object -First 1
+                  if ($deb) {
+                    Copy-Item $deb.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-linux-x64.deb")
+                  }
+
+                  # Copy and rename rpm package
+                  $rpm = Get-ChildItem release-downloads -Recurse -File | Where-Object { $_.Name -match '\.rpm$' } | Select-Object -First 1
+                  if ($rpm) {
+                    Copy-Item $rpm.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-linux-x64.rpm")
+                  }
+
                   # Copy standalone binary
                   $binary = Get-ChildItem release-downloads -Recurse -File | Where-Object { $_.Name -eq "AntiAFK-RBX-Sober" } | Select-Object -First 1
                   if ($binary) {
@@ -155,6 +184,8 @@ jobs:
 
                   $assetOrder = @(
                     "AntiAFK-RBX-Sober-$assetVersion-x86_64.AppImage",
+                    "AntiAFK-RBX-Sober-$assetVersion-linux-x64.deb",
+                    "AntiAFK-RBX-Sober-$assetVersion-linux-x64.rpm",
                     "AntiAFK-RBX-Sober-$assetVersion-x86_64-linux"
                   )
 
@@ -174,9 +205,10 @@ jobs:
                   "release-assets/SHA256SUMS.txt" >> $env:GITHUB_OUTPUT
                   "EOF" >> $env:GITHUB_OUTPUT
 
-            - name: Create GitHub Release
+            - name: Create or Update GitHub Release
               uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
               with:
+                  tag_name: ${{ steps.release_meta.outputs.name -replace '\s+•.*$', '' }}
                   name: ${{ steps.release_meta.outputs.name }}
                   body_path: release-body.md
                   prerelease: false

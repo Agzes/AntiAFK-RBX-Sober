@@ -38,3 +38,27 @@ icon = "assets/logo.png"
 desktop_entry = "dev.agzes.antiafk-rbx-sober.desktop"
 auto_link = true
 category = "Utility"
+
+[package.metadata.deb]
+name = "antiafk-rbx-sober"
+maintainer = "agzes <agzes0@proton.me>"
+copyright = "2026, agzes"
+license-file = ["LICENSE"]
+extended-description = "Native Linux Anti-AFK utility for Sober (Roblox)"
+depends = "$auto"
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/AntiAFK-RBX-Sober", "usr/bin/AntiAFK-RBX-Sober", "755"],
+    ["dev.agzes.antiafk-rbx-sober.desktop", "usr/share/applications/dev.agzes.antiafk-rbx-sober.desktop", "644"],
+    ["assets/logo.png", "usr/share/icons/hicolor/128x128/apps/dev.agzes.antiafk-rbx-sober.png", "644"],
+    ["assets/logo.png", "usr/share/pixmaps/dev.agzes.antiafk-rbx-sober.png", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/AntiAFK-RBX-Sober", dest = "/usr/bin/AntiAFK-RBX-Sober", mode = "755" },
+    { source = "dev.agzes.antiafk-rbx-sober.desktop", dest = "/usr/share/applications/dev.agzes.antiafk-rbx-sober.desktop", mode = "644" },
+    { source = "assets/logo.png", dest = "/usr/share/icons/hicolor/128x128/apps/dev.agzes.antiafk-rbx-sober.png", mode = "644" },
+    { source = "assets/logo.png", dest = "/usr/share/pixmaps/dev.agzes.antiafk-rbx-sober.png", mode = "644" },
+]
