@@ -96,6 +96,7 @@ jobs:
                   if-no-files-found: error
                   path: |
                       target/release/AntiAFK-RBX-Sober
+                      target/appimage/*.AppImage
                       *.AppImage
                       target/debian/*.deb
                       target/generate-rpm/*.rpm
@@ -159,27 +160,31 @@ jobs:
 
                   # Copy and rename AppImage
                   $appimage = Get-ChildItem release-downloads -Recurse -File | Where-Object { $_.Name -match '\.AppImage$' } | Select-Object -First 1
-                  if ($appimage) {
-                    Copy-Item $appimage.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-x86_64.AppImage")
+                  if (-not $appimage) {
+                    throw "AppImage artifact was not found in release-downloads!"
                   }
+                  Copy-Item $appimage.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-x86_64.AppImage")
 
                   # Copy and rename deb package
                   $deb = Get-ChildItem release-downloads -Recurse -File | Where-Object { $_.Name -match '\.deb$' } | Select-Object -First 1
-                  if ($deb) {
-                    Copy-Item $deb.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-linux-x64.deb")
+                  if (-not $deb) {
+                    throw "Debian (.deb) package was not found in release-downloads!"
                   }
+                  Copy-Item $deb.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-linux-x64.deb")
 
                   # Copy and rename rpm package
                   $rpm = Get-ChildItem release-downloads -Recurse -File | Where-Object { $_.Name -match '\.rpm$' } | Select-Object -First 1
-                  if ($rpm) {
-                    Copy-Item $rpm.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-linux-x64.rpm")
+                  if (-not $rpm) {
+                    throw "RPM (.rpm) package was not found in release-downloads!"
                   }
+                  Copy-Item $rpm.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-linux-x64.rpm")
 
                   # Copy standalone binary
                   $binary = Get-ChildItem release-downloads -Recurse -File | Where-Object { $_.Name -eq "AntiAFK-RBX-Sober" } | Select-Object -First 1
-                  if ($binary) {
-                    Copy-Item $binary.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-x86_64-linux")
+                  if (-not $binary) {
+                    throw "Standalone binary was not found in release-downloads!"
                   }
+                  Copy-Item $binary.FullName -Destination (Join-Path "release-assets" "AntiAFK-RBX-Sober-$assetVersion-x86_64-linux")
 
                   if (-not (Get-ChildItem release-assets -File)) {
                     throw "No release assets were found after filtering."
