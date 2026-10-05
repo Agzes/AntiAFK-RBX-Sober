@@ -78,8 +78,24 @@ The same works through `ANTIAFK_FORCE_DESKTOP=cosmic`. Accepted values are `auto
 Download the latest AppImage from the [Releases page](https://github.com/Agzes/AntiAFK-RBX-Sober/releases), make it executable, and run it:
 
 ```bash
-chmod +x AntiAFK-RBX-Sober-vX.Y.Z.AppImage
-./AntiAFK-RBX-Sober-vX.Y.Z.AppImage
+chmod +x AntiAFK-RBX-Sober-X.Y.Z-linux-x64.AppImage
+./AntiAFK-RBX-Sober-X.Y.Z-linux-x64.AppImage
+```
+
+### Debian / Ubuntu (.deb)
+
+Download the `.deb` package from the [Releases page](https://github.com/Agzes/AntiAFK-RBX-Sober/releases) and install it:
+
+```bash
+sudo apt install ./AntiAFK-RBX-Sober-X.Y.Z-linux-x64.deb
+```
+
+### Fedora / RHEL / openSUSE (.rpm)
+
+Download the `.rpm` package from the [Releases page](https://github.com/Agzes/AntiAFK-RBX-Sober/releases) and install it:
+
+```bash
+sudo dnf install ./AntiAFK-RBX-Sober-X.Y.Z-linux-x64.rpm
 ```
 
 ### Arch Linux
