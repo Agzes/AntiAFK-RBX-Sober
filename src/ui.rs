@@ -26,6 +26,7 @@ const DONATE_URL: &str = "https://agzes.github.io/donate";
 const DISCORD_URL: &str = "https://agzes.github.io/go/to/discord";
 const UINPUT_RULE: &str = "/etc/udev/rules.d/99-uinput-antiafk.rules";
 const BETA_NOTE: &str = "Beta feature: may be unstable. Please check how it behaves on your own PC and report problems.";
+const QUOTA_NOTE: &str = "Throttles Sober while AntiAFK is running. Beta feature: may be unstable. The limit is removed while you focus the game if Unlock at Focus is enabled.";
 const TICK: Duration = Duration::from_millis(250);
 const FRAME: Duration = Duration::from_millis(16);
 
@@ -1662,7 +1663,7 @@ fn settings_page(app: &App, palette: Palette) -> Element<'_, Message> {
     } else if app.caps.quota {
         Some(InfoTip {
             icon: Icon::Beta,
-            text: BETA_NOTE,
+            text: QUOTA_NOTE,
         })
     } else {
         None
@@ -3203,13 +3204,13 @@ fn build_diagnostics(
             rows.push(component_row("hyprctl Utility", "hyprctl", &["version"]));
         }
         InputMode::Kde => {
-            let qdbus = command_succeeds("qdbus6", &["--version"])
-                || command_succeeds("qdbus", &["--version"]);
+            let qdbus = crate::inputs::common::find_qdbus();
+            let qdbus_ok = qdbus.is_some();
             rows.push(DiagRow {
-                icon: if qdbus { Icon::Cpu } else { Icon::Warning },
+                icon: if qdbus_ok { Icon::Cpu } else { Icon::Warning },
                 title: "KDE D-Bus (qdbus)".to_string(),
-                detail: None,
-                status: if qdbus {
+                detail: qdbus.map(|path| format!("Using {path}")),
+                status: if qdbus_ok {
                     DiagStatus::Ok
                 } else {
                     DiagStatus::Error
@@ -3462,26 +3463,54 @@ fn build_diagnostics(
 
     if settings.fps_capper {
         let quota = crate::backend::cpu_quota_report();
-        rows.push(DiagRow {
-            icon: Icon::Performance,
-            title: "FPS Throttle".to_string(),
-            detail: Some(if quota.limit.is_none() {
-                "Inactive (unlocked or no game)".to_string()
-            } else {
-                format!(
+        let supported = crate::backend::cpu_quota_supported(mode);
+        let (status, label, detail) = if !supported {
+            (
+                DiagStatus::Warning,
+                Some("Unsupported".to_string()),
+                Some("CPU throttling is not available on this desktop.".to_string()),
+            )
+        } else if settings.running && quota.limit.is_some() {
+            (
+                DiagStatus::Ok,
+                None,
+                Some(format!(
                     "Active ({}% limit on {} process(es))",
                     quota.limit.unwrap_or_default(),
                     quota.pids
-                )
-            }),
-            status: if quota.limit.is_some() || quota.focus == Some(true) {
-                DiagStatus::Ok
-            } else {
-                DiagStatus::Warning
-            },
+                )),
+            )
+        } else if settings.running && quota.focus == Some(true) {
+            (
+                DiagStatus::Ok,
+                Some("Unlocked".to_string()),
+                Some("Game is focused, so the limit is temporarily removed.".to_string()),
+            )
+        } else if settings.running {
+            (
+                DiagStatus::Ok,
+                Some("Waiting".to_string()),
+                Some("Waiting for a Sober process to throttle.".to_string()),
+            )
+        } else {
+            (
+                DiagStatus::Ok,
+                Some("Idle".to_string()),
+                Some(
+                    "Starts automatically when AntiAFK is running and Sober is detected."
+                        .to_string(),
+                ),
+            )
+        };
+
+        rows.push(DiagRow {
+            icon: Icon::Performance,
+            title: "FPS Throttle".to_string(),
+            detail,
+            status,
             action: None,
             action_disabled: false,
-            label: None,
+            label,
         });
     }
 
