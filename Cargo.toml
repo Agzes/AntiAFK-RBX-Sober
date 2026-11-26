@@ -29,6 +29,8 @@ clap = { version = "4.6.7", features = ["derive"] }
 image = "0.25.10"
 notify-rust = "4.18.1"
 dirs = "7.0.0"
+zbus = "5.19.0"
+tokio = { version = "1", features = ["rt", "net", "time"] }
 cosmic-client-toolkit = "0.2.0"
 libc = "0.2"
 
@@ -49,10 +51,26 @@ depends = "$auto"
 section = "utils"
 priority = "optional"
 assets = [
-    ["target/release/AntiAFK-RBX-Sober", "usr/bin/AntiAFK-RBX-Sober", "755"],
-    ["dev.agzes.antiafk-rbx-sober.desktop", "usr/share/applications/dev.agzes.antiafk-rbx-sober.desktop", "644"],
-    ["assets/logo.png", "usr/share/icons/hicolor/128x128/apps/dev.agzes.antiafk-rbx-sober.png", "644"],
-    ["assets/logo.png", "usr/share/pixmaps/dev.agzes.antiafk-rbx-sober.png", "644"],
+    [
+        "target/release/AntiAFK-RBX-Sober",
+        "usr/bin/AntiAFK-RBX-Sober",
+        "755",
+    ],
+    [
+        "dev.agzes.antiafk-rbx-sober.desktop",
+        "usr/share/applications/dev.agzes.antiafk-rbx-sober.desktop",
+        "644",
+    ],
+    [
+        "assets/logo.png",
+        "usr/share/icons/hicolor/128x128/apps/dev.agzes.antiafk-rbx-sober.png",
+        "644",
+    ],
+    [
+        "assets/logo.png",
+        "usr/share/pixmaps/dev.agzes.antiafk-rbx-sober.png",
+        "644",
+    ],
 ]
 
 [package.metadata.generate-rpm]

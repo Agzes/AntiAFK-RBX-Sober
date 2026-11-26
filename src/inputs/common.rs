@@ -219,17 +219,82 @@ pub fn reconnect_button(x: i32, y: i32, width: i32, height: i32) -> (i32, i32) {
 }
 
 pub fn find_qdbus() -> Option<String> {
-    for program in ["qdbus6", "qdbus"] {
-        let available = Command::new(program)
-            .arg("--version")
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false);
-        if available {
+    for program in ["qdbus6", "qdbus", "qdbus-qt6"] {
+        if command_works(program) {
             return Some(program.to_string());
         }
     }
+
+    for directory in qdbus_directories() {
+        for name in ["qdbus6", "qdbus", "qdbus-qt6"] {
+            let candidate = directory.join(name);
+            if candidate.is_file() {
+                let candidate = candidate.to_string_lossy().into_owned();
+                if command_works(&candidate) {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
     None
+}
+
+fn command_works(program: &str) -> bool {
+    Command::new(program)
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn qdbus_directories() -> Vec<std::path::PathBuf> {
+    let mut directories = Vec::new();
+
+    for tool in ["qtpaths6", "qtpaths"] {
+        if let Ok(output) = Command::new(tool)
+            .args(["--query", "QT_INSTALL_BINS"])
+            .output()
+            && output.status.success()
+        {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                directories.push(std::path::PathBuf::from(path));
+            }
+        }
+    }
+
+    let mut known = vec![
+        "/usr/lib64/qt6/bin".to_string(),
+        "/usr/lib/qt6/bin".to_string(),
+        "/usr/libexec/qt6".to_string(),
+        "/usr/lib/qt6/libexec".to_string(),
+        "/usr/local/lib64/qt6/bin".to_string(),
+        "/usr/local/lib/qt6/bin".to_string(),
+        "/usr/sbin".to_string(),
+        "/sbin".to_string(),
+        "/usr/local/sbin".to_string(),
+    ];
+
+    if let Some(qt_plugins) = std::env::var_os("QT_PLUGIN_PATH") {
+        for path in std::env::split_paths(&qt_plugins) {
+            if let Some(parent) = path.parent() {
+                known.push(parent.join("bin").to_string_lossy().into_owned());
+            }
+            known.push(path.join("bin").to_string_lossy().into_owned());
+        }
+    }
+
+    known.extend([
+        format!("/usr/lib/{}-linux-gnu/qt6/bin", std::env::consts::ARCH),
+        format!("/usr/lib/{}-linux-gnu/qt6/libexec", std::env::consts::ARCH),
+    ]);
+
+    for path in known {
+        directories.push(std::path::PathBuf::from(path));
+    }
+
+    directories
 }
 
 pub fn command_output(program: &str, args: &[&str]) -> Result<String, String> {

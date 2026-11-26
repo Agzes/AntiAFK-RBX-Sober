@@ -22,7 +22,10 @@ const TARGET_SCRIPT: &str = r#"
         var title = (w.caption || "").toLowerCase();
         var app = (w.desktopFileName || "").toLowerCase();
         return (cls.indexOf("sober") !== -1 || cls.indexOf("roblox") !== -1 ||
-            app.indexOf("sober") !== -1) && title.indexOf("{self_marker}") === -1;
+            app.indexOf("sober") !== -1 || app.indexOf("org.vinegarhq") !== -1) &&
+            cls.indexOf("{self_marker}") === -1 &&
+            app.indexOf("{self_marker}") === -1 &&
+            title.indexOf("{self_marker}") === -1;
     };
     var targets = function () {
         var windows = workspace.windowList();
@@ -37,6 +40,16 @@ const TARGET_SCRIPT: &str = r#"
 fn target_script() -> String {
     TARGET_SCRIPT.replace("{self_marker}", SELF_MARKER)
 }
+
+const REPORT_PREAMBLE: &str = r#"
+    var __antiafkReport = function (marker, value) {
+        try {
+            callDBus("dev.agzes.antiafk", "/dev/agzes/antiafk",
+                "dev.agzes.antiafk.KWin", "Report", marker, String(value));
+        } catch (e) {}
+        try { print(marker + value); } catch (e) {}
+    };
+"#;
 
 struct Geometry {
     center_x: i32,
@@ -61,7 +74,9 @@ fn next_nonce() -> u64 {
 }
 
 pub fn run(state_arc: &SharedState) -> Result<(), String> {
-    let qdbus = find_qdbus().ok_or("Neither qdbus6 nor qdbus found.")?;
+    let qdbus = find_qdbus().ok_or(
+        "Neither qdbus6 nor qdbus was found. Install the Qt 6 tools (qt6-tools / qt6-qdbus-tools).",
+    )?;
     let mut kb_device = create_keyboard_device()?;
     let mut pointer = create_pointer_device()?;
 
@@ -202,7 +217,7 @@ fn get_current_cursor_pos(qdbus: &str) -> Option<(i32, i32, i32, i32)> {
             r#"
             var cp = workspace.cursorPos;
             var vs = workspace.virtualScreenSize;
-            print("{marker}" + Math.round(cp.x) + "," + Math.round(cp.y) + "," + vs.width + "," + vs.height);
+            __antiafkReport("{marker}", Math.round(cp.x) + "," + Math.round(cp.y) + "," + vs.width + "," + vs.height);
             "#
         )
     })?;
@@ -215,7 +230,7 @@ fn get_active_window_internal_id(qdbus: &str) -> Option<String> {
         format!(
             r#"
             var w = workspace.activeWindow;
-            if (w) {{ print("{marker}" + w.internalId); }}
+            if (w) {{ __antiafkReport("{marker}", w.internalId); }}
             "#
         )
     })
@@ -234,7 +249,7 @@ fn restore_active_window_by_id(qdbus: &str, win_id: &str) {
                     break;
                 }}
             }}
-            print("{marker}ok");
+            __antiafkReport("{marker}", "ok");
             "#,
             win_id = win_id
         )
@@ -265,7 +280,7 @@ fn focus_and_get_geometry(qdbus: &str, index: usize) -> Option<Geometry> {
                 workspace.activeWindow = target;
                 var geo = target.frameGeometry;
                 var vs = workspace.virtualScreenSize;
-                print("{marker}" + Math.round(geo.x + geo.width / 2) + "," +
+                __antiafkReport("{marker}", Math.round(geo.x + geo.width / 2) + "," +
                     Math.round(geo.y + geo.height / 2) + "," +
                     Math.round(geo.width) + "," + Math.round(geo.height) + "," +
                     vs.width + "," + vs.height + "," + wasMinimized);
@@ -297,7 +312,7 @@ fn minimize_window_by_index(qdbus: &str, index: usize) {
             if (found.length > {index}) {{
                 found[{index}].minimized = true;
             }}
-            print("{marker}ok");
+            __antiafkReport("{marker}", "ok");
             "#,
             target = target_script(),
             index = index,
@@ -331,7 +346,7 @@ pub fn focused_is_sober() -> Option<bool> {
             r#"
             {target}
             var active = workspace.activeWindow;
-            print("{marker}" + (isTarget(active) ? "1" : "0"));
+            __antiafkReport("{marker}", (isTarget(active) ? "1" : "0"));
             "#,
             target = target_script(),
             marker = marker
@@ -345,21 +360,25 @@ pub fn focused_is_sober() -> Option<bool> {
 }
 
 pub fn script_bridge() -> Result<(), String> {
-    let qdbus = find_qdbus().ok_or("qdbus6 or qdbus is not available")?;
-    match run_query(&qdbus, |marker| format!("print(\"{marker}ok\");")) {
+    let qdbus = find_qdbus().ok_or(
+        "qdbus6 or qdbus is not available. Install the Qt 6 tools (qt6-tools / qt6-qdbus-tools).",
+    )?;
+    match run_query(&qdbus, |marker| {
+        format!("__antiafkReport(\"{marker}\", \"ok\");")
+    }) {
         Some(_) => Ok(()),
         None => Err(SCRIPT_LOGGING_HINT.to_string()),
     }
 }
 
-pub const SCRIPT_LOGGING_HINT: &str = "KWin does not forward script output to the journal. Run systemctl --user set-environment QT_LOGGING_RULES=kwin_*.debug=true and log out and back in.";
+pub const SCRIPT_LOGGING_HINT: &str = "KWin did not answer through its D-Bus scripting bridge and its script output is not forwarded to the journal. Try: systemctl --user set-environment \"QT_LOGGING_RULES=kwin_*.debug=true;js.debug=true;qml.debug=true\" and log out and back in.";
 
 pub fn enable_script_logging() -> Result<(), String> {
     let output = Command::new("systemctl")
         .args([
             "--user",
             "set-environment",
-            "QT_LOGGING_RULES=kwin_*.debug=true",
+            "QT_LOGGING_RULES=kwin_*.debug=true;js.debug=true;qml.debug=true",
         ])
         .output()
         .map_err(|error| format!("systemctl failed: {error}"))?;
@@ -424,17 +443,94 @@ fn journal_cache() -> &'static Mutex<HashMap<String, String>> {
     })
 }
 
-fn run_query(qdbus: &str, script: impl FnOnce(&str) -> String) -> Option<String> {
-    let _ = journal_cache();
-    let marker = format!("ANTIAFK{}:", next_nonce());
-    let body = script(&marker);
-    run_kwin_script(qdbus, &body);
-    read_journal_value(&marker)
+static KWIN_RESPONSES: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+static KWIN_BRIDGE: OnceLock<bool> = OnceLock::new();
+
+fn kwin_responses() -> &'static Mutex<HashMap<String, String>> {
+    KWIN_RESPONSES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn read_journal_value(marker: &str) -> Option<String> {
-    let deadline = Instant::now() + Duration::from_millis(300);
+struct KWinReportSink;
+
+#[zbus::interface(name = "dev.agzes.antiafk.KWin")]
+impl KWinReportSink {
+    fn report(&self, marker: String, value: String) {
+        if let Ok(mut map) = kwin_responses().lock() {
+            map.insert(marker, value);
+            if map.len() > 100 {
+                map.clear();
+            }
+        }
+    }
+}
+
+fn kwin_bridge() -> bool {
+    *KWIN_BRIDGE.get_or_init(|| {
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<bool>();
+        let spawned = thread::Builder::new()
+            .name("antiafk-kde-dbus".into())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(_) => {
+                        let _ = ready_tx.send(false);
+                        return;
+                    }
+                };
+
+                runtime.block_on(async move {
+                    let connection = match zbus::Connection::session().await {
+                        Ok(connection) => connection,
+                        Err(_) => {
+                            let _ = ready_tx.send(false);
+                            return;
+                        }
+                    };
+
+                    let registered = connection
+                        .object_server()
+                        .at("/dev/agzes/antiafk", KWinReportSink)
+                        .await
+                        .is_ok()
+                        && connection.request_name("dev.agzes.antiafk").await.is_ok();
+
+                    let _ = ready_tx.send(registered);
+                    if !registered {
+                        return;
+                    }
+
+                    std::future::pending::<()>().await;
+                });
+            })
+            .is_ok();
+
+        spawned
+            && ready_rx
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap_or(false)
+    })
+}
+
+fn run_query(qdbus: &str, script: impl FnOnce(&str) -> String) -> Option<String> {
+    let _ = journal_cache();
+    let _ = kwin_bridge();
+    let marker = format!("ANTIAFK{}:", next_nonce());
+    let body = format!("{REPORT_PREAMBLE}\n{}", script(&marker));
+    run_kwin_script(qdbus, &body);
+    read_report_value(&marker)
+}
+
+fn read_report_value(marker: &str) -> Option<String> {
+    let deadline = Instant::now() + Duration::from_millis(600);
     while Instant::now() < deadline {
+        if let Ok(mut responses) = kwin_responses().lock()
+            && let Some(value) = responses.remove(marker)
+        {
+            return Some(value);
+        }
         if let Ok(mut cache) = journal_cache().lock()
             && let Some(val) = cache.remove(marker)
         {
@@ -443,6 +539,10 @@ fn read_journal_value(marker: &str) -> Option<String> {
         thread::sleep(Duration::from_millis(15));
     }
 
+    read_journal_history(marker)
+}
+
+fn read_journal_history(marker: &str) -> Option<String> {
     let output = Command::new("journalctl")
         .args([
             "--user",
@@ -526,7 +626,7 @@ fn get_target_window_count(qdbus: &str) -> usize {
         format!(
             r#"
             {target}
-            print("{marker}" + targets().length);
+            __antiafkReport("{marker}", targets().length);
             "#,
             target = target_script(),
             marker = marker
@@ -547,7 +647,7 @@ fn unminimize_all_target_windows(qdbus: &str) {
             for (var i = 0; i < found.length; i++) {{
                 if (found[i].minimized) {{ found[i].minimized = false; }}
             }}
-            print("{marker}ok");
+            __antiafkReport("{marker}", "ok");
             "#,
             target = target_script(),
             marker = marker
@@ -585,4 +685,44 @@ fn get_pixel_color() -> Option<(u8, u8, u8)> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn report_bridge_receives_kwin_style_calls() {
+        if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() || !kwin_bridge() {
+            return;
+        }
+
+        let marker = format!("ANTIAFKTEST{}:", next_nonce());
+        let output = Command::new("gdbus")
+            .args([
+                "call",
+                "--session",
+                "--dest",
+                "dev.agzes.antiafk",
+                "--object-path",
+                "/dev/agzes/antiafk",
+                "--method",
+                "dev.agzes.antiafk.KWin.Report",
+                &marker,
+                "42",
+            ])
+            .output();
+
+        let Ok(output) = output else {
+            return;
+        };
+        assert!(
+            output.status.success(),
+            "gdbus failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let value = kwin_responses().lock().unwrap().remove(&marker);
+        assert_eq!(value.as_deref(), Some("42"));
+    }
 }

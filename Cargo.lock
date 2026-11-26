@@ -17,6 +17,8 @@ dependencies = [
  "notify-rust",
  "serde",
  "serde_json",
+ "tokio",
+ "zbus 5.19.0",
 ]
 
 [[package]]

@@ -110,19 +110,18 @@ pub fn preflight(settings: &AppState) -> Result<(), String> {
             }
         }
         InputMode::Kde => {
-            if let Err(error) = crate::inputs::kde::script_bridge() {
-                issues.push(error);
-            }
             if std::env::var_os("WAYLAND_DISPLAY").is_none()
                 && std::env::var("XDG_SESSION_TYPE").as_deref() != Ok("wayland")
             {
                 issues.push("KDE Plasma 6 in a Wayland session is required.".to_string());
             }
             if find_qdbus().is_none() {
-                issues.push("The qdbus6 or qdbus command is not available.".to_string());
-            }
-            if !command_works("journalctl", &["--version"]) {
-                issues.push("The journalctl command is required for window detection.".to_string());
+                issues.push(
+                    "The qdbus6 or qdbus command was not found. Install the Qt 6 tools (qt6-tools / qt6-qdbus-tools / qttools5-dev-tools)."
+                        .to_string(),
+                );
+            } else if let Err(error) = crate::inputs::kde::script_bridge() {
+                issues.push(error);
             }
             if settings.auto_reconnect && !program_available("spectacle") {
                 issues.push("The spectacle command is required for Auto Reconnect.".to_string());
