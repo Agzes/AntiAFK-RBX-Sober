@@ -1,0 +1,83 @@
+name: 📊 Compatibility Report
+description: Report how AntiAFK-RBX-Sober works on your distribution and DE/WM
+title: "[Compatibility]: "
+labels: ["compatibility"]
+assignees:
+    - agzes
+body:
+    - type: markdown
+      attributes:
+          value: "## Thank you for helping AntiAFK-RBX-Sober support more distributions and DE/WMs!"
+    - type: input
+      id: version
+      attributes:
+          label: Version
+          placeholder: e.g. v1.0.1
+      validations:
+          required: true
+    - type: dropdown
+      id: package
+      attributes:
+          label: Installation Method
+          options:
+              - AppImage
+              - AUR (antiafk-rbx-sober)
+              - .deb package
+              - .rpm package
+              - Built from source
+              - Other
+      validations:
+          required: true
+    - type: dropdown
+      id: os
+      attributes:
+          label: Distribution
+          options:
+              - Arch / Arch-based (CachyOS, EndeavourOS, etc.)
+              - Fedora / RPM-based (Workstation, Bazzite, Nobara, etc.)
+              - Ubuntu / Debian / Mint / Pop!_OS
+              - openSUSE
+              - NixOS
+              - Other Linux Distribution
+      validations:
+          required: true
+    - type: input
+      id: distro-detail
+      attributes:
+          label: Exact Distribution & Version
+          placeholder: e.g. Bazzite 42, Fedora Workstation 43, CachyOS, Ubuntu 24.04
+      validations:
+          required: true
+    - type: input
+      id: linux-de-wm
+      attributes:
+          label: DE / WM
+          placeholder: e.g. Hyprland 0.55 (Wayland), KDE Plasma 6.6 (Wayland), GNOME 51 (Wayland)
+      validations:
+          required: true
+    - type: dropdown
+      id: status
+      attributes:
+          label: Overall Status
+          options:
+              - "✅ Confirmed working"
+              - "⚠️ Partial support / minor issues"
+              - "❌ Not working"
+      validations:
+          required: true
+    - type: checkboxes
+      id: features
+      attributes:
+          label: Working Features
+          options:
+              - label: Basic Anti-AFK Actions (Jump / Walk / Camera Zoom)
+              - label: Don't Interrupt Me (User-Safe)
+              - label: Hide Game (Stealth Mode)
+              - label: Auto Reconnect
+              - label: FPS Capper
+              - label: Multi-Instance
+    - type: textarea
+      id: context
+      attributes:
+          label: Extra Context / Screenshots (optional)
+          placeholder: Paste your Diagnostics tab status, any workarounds needed, or extra details.

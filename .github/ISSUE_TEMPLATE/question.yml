@@ -5,6 +5,9 @@ labels: ["question"]
 assignees:
     - agzes
 body:
+    - type: markdown
+      attributes:
+          value: "## Have a question about AntiAFK-RBX-Sober? Ask away!"
     - type: textarea
       id: question
       attributes:
@@ -15,5 +18,5 @@ body:
     - type: textarea
       id: context
       attributes:
-          label: Context
+          label: Extra Context / Screenshots (optional)
           placeholder: Any details, environment, or configuration related to your question.

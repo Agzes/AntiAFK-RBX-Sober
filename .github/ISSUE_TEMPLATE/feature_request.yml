@@ -23,10 +23,10 @@ body:
     - type: textarea
       id: alternatives
       attributes:
-          label: Alternatives Considered
+          label: Alternatives Considered (optional)
           placeholder: Any other ways to solve this?
     - type: textarea
       id: context
       attributes:
-          label: Extra Context
-          placeholder: Screenshots, examples, etc.
+          label: Extra Context / Screenshots (optional)
+          placeholder: Any examples, mockups, or details.
