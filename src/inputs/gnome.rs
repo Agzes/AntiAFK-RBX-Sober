@@ -2,10 +2,12 @@ use crate::GNOME_EXTENSION_UUID;
 use crate::environment::{InputMode, forced_desktop};
 use crate::input::{create_keyboard_device, create_mouse_device};
 use crate::inputs::common::{
-    click_mouse, command_output, is_sober_metadata, perform_keyboard_actions,
-    reconnect_pixel_match, responsive_sleep, set_action_active, set_status, should_continue,
+    click_mouse, command_output, create_absolute_mouse_device, is_sober_metadata,
+    move_absolute_mouse, perform_keyboard_actions, reconnect_pixel_match, responsive_sleep,
+    set_action_active, set_status, should_continue,
 };
 use crate::state::{APP_SLUG, APP_TITLE, RuntimeStatus, SharedState};
+use evdev::uinput::VirtualDevice;
 use image::GenericImageView;
 use serde::Deserialize;
 use serde_json::Value;
@@ -167,13 +169,107 @@ fn cursor_position() -> Result<(i32, i32), String> {
     ))
 }
 
-fn warp_cursor(x: i32, y: i32) -> Result<(), String> {
-    let value = call_helper("WarpPointer", &[x.to_string(), y.to_string()])?;
-    if value == "true" {
-        Ok(())
-    } else {
-        Err("GNOME helper rejected the pointer request".to_string())
+struct GnomePointer {
+    absolute: Option<(VirtualDevice, i32, i32)>,
+    helper_works: bool,
+}
+
+impl GnomePointer {
+    fn new() -> Self {
+        Self {
+            absolute: Self::create_absolute(),
+            helper_works: true,
+        }
     }
+
+    fn create_absolute() -> Option<(VirtualDevice, i32, i32)> {
+        screen_size().and_then(|(width, height)| {
+            create_absolute_mouse_device()
+                .ok()
+                .map(|device| (device, width, height))
+        })
+    }
+
+    fn warp(&mut self, x: i32, y: i32) -> Result<(), String> {
+        if self.helper_works {
+            match call_helper("WarpPointer", &[x.to_string(), y.to_string()]) {
+                Ok(value) if value == "true" => return Ok(()),
+                Ok(_) => self.helper_works = false,
+                Err(error) => {
+                    if error.contains("UnknownObject") || error.contains("UnknownMethod") {
+                        self.helper_works = false;
+                    }
+                }
+            }
+        }
+
+        if self.absolute.is_none() {
+            self.absolute = Self::create_absolute();
+        }
+        if let Some((device, width, height)) = self.absolute.as_mut() {
+            return move_absolute_mouse(device, x, y, *width, *height);
+        }
+
+        Err(
+            "GNOME helper rejected the pointer request. Reinstall the GNOME extension in Diagnostics, then log out and back in."
+                .to_string(),
+        )
+    }
+}
+
+fn screen_size() -> Option<(i32, i32)> {
+    if let Ok(payload) = call_helper("ScreenSize", &[])
+        && let Ok(value) = serde_json::from_str::<Value>(&payload)
+        && let Some(array) = value.as_array()
+        && array.len() >= 2
+    {
+        let width = array[0].as_i64().unwrap_or_default() as i32;
+        let height = array[1].as_i64().unwrap_or_default() as i32;
+        if width > 0 && height > 0 {
+            return Some((width, height));
+        }
+    }
+
+    if let Ok(output) = Command::new("xrandr").arg("--current").output()
+        && output.status.success()
+    {
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if !line.contains('*') {
+                continue;
+            }
+            let Some(token) = line.split_whitespace().next() else {
+                continue;
+            };
+            let Some(geometry) = token.split('+').next() else {
+                continue;
+            };
+            let Some((width, height)) = geometry.split_once('x') else {
+                continue;
+            };
+            let Ok(width) = width.trim_end_matches('i').parse::<i32>() else {
+                continue;
+            };
+            let Ok(height) = height.trim_end_matches('i').parse::<i32>() else {
+                continue;
+            };
+            if width > 0 && height > 0 {
+                return Some((width, height));
+            }
+        }
+    }
+
+    if let Ok(windows) = list_windows() {
+        let width = windows.iter().map(|window| window.x + window.width).max();
+        let height = windows.iter().map(|window| window.y + window.height).max();
+        if let (Some(width), Some(height)) = (width, height)
+            && width > 0
+            && height > 0
+        {
+            return Some((width, height));
+        }
+    }
+
+    None
 }
 
 fn user_active() -> Result<bool, String> {
@@ -257,7 +353,7 @@ fn capture_window(window: &GnomeWindow) -> Option<std::path::PathBuf> {
     None
 }
 
-fn reconnect_click(window: &GnomeWindow) -> Result<bool, String> {
+fn reconnect_click(window: &GnomeWindow, pointer: &mut GnomePointer) -> Result<bool, String> {
     let Some(path) = capture_window(window) else {
         return Ok(false);
     };
@@ -325,7 +421,7 @@ fn reconnect_click(window: &GnomeWindow) -> Result<bool, String> {
     }
     let (click_x, click_y) =
         crate::inputs::common::reconnect_button(window.x, window.y, window.width, window.height);
-    warp_cursor(click_x, click_y)?;
+    pointer.warp(click_x, click_y)?;
     Ok(true)
 }
 
@@ -333,6 +429,7 @@ pub fn run(state: &SharedState) -> Result<(), String> {
     probe()?;
     let mut keyboard = create_keyboard_device()?;
     let mut mouse = create_mouse_device()?;
+    let mut pointer = GnomePointer::new();
     let mut hidden_ids: Vec<String> = Vec::new();
 
     loop {
@@ -408,7 +505,8 @@ pub fn run(state: &SharedState) -> Result<(), String> {
                 }
             }
             thread::sleep(Duration::from_millis(150));
-            if let Err(err) = warp_cursor(target.x + target.width / 2, target.y + target.height / 2)
+            if let Err(err) =
+                pointer.warp(target.x + target.width / 2, target.y + target.height / 2)
             {
                 error = Some(err);
                 break;
@@ -423,7 +521,7 @@ pub fn run(state: &SharedState) -> Result<(), String> {
             }
             if settings.auto_reconnect {
                 set_status(state, RuntimeStatus::ReconnectChecking);
-                match reconnect_click(&target) {
+                match reconnect_click(&target, &mut pointer) {
                     Ok(true) => {
                         set_status(state, RuntimeStatus::Reconnecting);
                         thread::sleep(Duration::from_millis(100));
@@ -467,7 +565,7 @@ pub fn run(state: &SharedState) -> Result<(), String> {
             let _ = focus_window(&previous);
         }
         if let Some((x, y)) = cursor {
-            let _ = warp_cursor(x, y);
+            let _ = pointer.warp(x, y);
         }
         set_action_active(state, false);
 

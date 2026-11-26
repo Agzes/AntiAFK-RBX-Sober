@@ -25,6 +25,9 @@ const DBUS_IFACE = `
     <method name="PointerPosition">
       <arg type="s" direction="out"/>
     </method>
+    <method name="ScreenSize">
+      <arg type="s" direction="out"/>
+    </method>
     <method name="WarpPointer">
       <arg type="i" direction="in"/>
       <arg type="i" direction="in"/>
@@ -115,24 +118,46 @@ export default class AntiAfkExtension extends Extension {
         return JSON.stringify([pointer[0], pointer[1]]);
     }
 
-    WarpPointer(x, y) {
+    ScreenSize() {
+        const stage = global.stage;
+        if (!stage) return JSON.stringify([0, 0]);
+        return JSON.stringify([
+            Math.round(stage.width),
+            Math.round(stage.height),
+        ]);
+    }
+
+    _defaultSeat() {
+        let backend = null;
+
         try {
-            const seat = Clutter.get_default_backend().get_default_seat();
-            if (seat && typeof seat.warp_pointer === "function") {
-                seat.warp_pointer(x, y);
-                return true;
+            if (typeof Clutter.get_default_backend === "function") {
+                backend = Clutter.get_default_backend();
             }
         } catch (_e) {}
 
+        if (!backend) {
+            try {
+                backend = global.stage?.context?.get_backend?.() ?? null;
+            } catch (_e) {}
+        }
+
+        if (!backend) return null;
         try {
-            if (
-                global.stage &&
-                typeof global.stage.warp_pointer === "function"
-            ) {
-                global.stage.warp_pointer(x, y);
+            return backend.get_default_seat();
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    WarpPointer(x, y) {
+        const seat = this._defaultSeat();
+        if (seat && typeof seat.warp_pointer === "function") {
+            try {
+                seat.warp_pointer(x, y);
                 return true;
-            }
-        } catch (_e) {}
+            } catch (_e) {}
+        }
 
         return false;
     }

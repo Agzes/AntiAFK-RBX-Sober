@@ -3,5 +3,5 @@
     "name": "AntiAFK-RBX-Sober GNOME backend",
     "description": "Window and pointer control helper for AntiAFK-RBX-Sober.",
     "shell-version": ["45", "46", "47", "48", "49", "50", "51", "52"],
-    "version": 1
+    "version": 2
 }
