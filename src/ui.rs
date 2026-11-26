@@ -19,7 +19,7 @@ use std::fmt;
 use std::process::Command;
 use std::time::Duration;
 
-const CURRENT_VERSION: &str = "0.2.0";
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const REPOSITORY_URL: &str = "https://github.com/Agzes/AntiAFK-RBX-Sober";
 const RELEASES_URL: &str = "https://github.com/Agzes/AntiAFK-RBX-Sober/releases";
 const DONATE_URL: &str = "https://agzes.github.io/donate";
