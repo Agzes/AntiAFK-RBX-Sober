@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.1] - 2026-11-26
 
 ### Fixed
 
@@ -8,6 +8,11 @@
 - **KDE Plasma 6**: `qdbus6`/`qdbus` is now also found in standard Qt 6 tool directories (for example `/usr/lib64/qt6/bin`), fixing AppImages and RPM-based distributions where the tool is outside `PATH`.
 - **GNOME (Wayland)**: pointer warping works on GNOME 51+ by using `global.stage.context.get_backend()` in the bundled extension, with an absolute `/dev/uinput` pointer fallback for already-installed older extensions.
 - **Diagnostics**: FPS Throttle now reports `Idle`, `Waiting` or `Unlocked` instead of the misleading `Unavailable` when throttling is simply not active.
+
+> [!NOTE]
+>
+> - **GNOME**: After updating, open **Diagnostics** and click **Reinstall** on the GNOME Extension row, then log out and back in so GNOME Shell loads v2 of the bundled extension (the `/dev/uinput` pointer fallback also works with v1).
+> - **KDE**: Manual `qdbus6` symlinks and `QT_LOGGING_RULES` overrides are no longer required.
 
 ---
 
