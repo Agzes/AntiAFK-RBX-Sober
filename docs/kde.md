@@ -9,9 +9,11 @@ AntiAFK-RBX-Sober integrates natively with [KDE Plasma 6 (Wayland)](https://kde.
 | Tool               | Purpose                              | Package                            |
 | :----------------- | :----------------------------------- | :--------------------------------- |
 | `qdbus6` / `qdbus` | D-Bus communication with KWin        | `qt6-tools` / `qttools5-dev-tools` |
-| `journalctl`       | Reading KWin script execution output | Part of systemd                    |
+| `journalctl`       | Fallback for KWin script output      | Part of systemd                    |
 | `spectacle`        | Window screenshot for Auto Reconnect | `spectacle`                        |
 | `/dev/uinput`      | Virtual input emulation              | Built-in kernel module             |
+
+> AntiAFK searches the common Qt 6 tool directories (`/usr/lib64/qt6/bin`, `/usr/lib/qt6/bin`, `/usr/lib/*-linux-gnu/qt6/bin`, ...) in addition to `PATH`, so AppImages and distributions that keep `qdbus` outside `PATH` work without manual symlinks.
 
 ---
 
@@ -27,7 +29,8 @@ qdbus6 org.kde.KWin /Scripting/Script<id> run
 ```
 
 - The script inspects `workspace.windowList()` for Sober clients (`client.caption`, `client.resourceClass`, or `client.resourceName`).
-- AntiAFK reads script output from `journalctl` using unique random marker tokens to avoid race conditions.
+- Scripts report their results back through KWin's `callDBus()` to a small temporary D-Bus service owned by AntiAFK. This works even when KWin's scripting log category is disabled.
+- As a fallback, AntiAFK still captures script `print()` output from `journalctl` using unique random marker tokens.
 - Target windows are focused with `workspace.activeWindow = client`.
 
 ### 2. Multi-Instance Support
@@ -68,8 +71,8 @@ qdbus6 org.kde.KWin /Scripting/Script<id> run
 Under the **Diagnostics** tab in AntiAFK:
 
 - **KDE D-Bus (qdbus)**: checks availability of `qdbus6` or `qdbus`.
-- **KWin Script Bridge**: runs a test script and verifies journal output.
-    - If output is silenced, an **Enable Logging** button appears in Diagnostics to enable KWin debug logging automatically!
+- **KWin Script Bridge**: runs a test script and verifies the result through the D-Bus reporting bridge (journal output is only used as a fallback).
+    - If neither channel answers, an **Enable Logging** button appears in Diagnostics to enable KWin debug logging automatically!
 - **Screen Capture**: checks for `spectacle`.
 - **Input Emulation**: verifies `/dev/uinput` write access.
 
@@ -77,11 +80,11 @@ Under the **Diagnostics** tab in AntiAFK:
 
 ## Troubleshooting
 
-- **"KWin Script Bridge: KWin does not forward script output to the journal"**:
-  By default, Plasma may silence KWin script console logging. To fix:
+- **"KWin Script Bridge: KWin did not answer through its D-Bus scripting bridge"**:
+  Update to the latest AntiAFK build (scripts report through D-Bus). If you still see this message, enable KWin logging:
     1. Click **Enable Logging** under the KWin Script Bridge row in Diagnostics, or run:
         ```bash
-        systemctl --user set-environment QT_LOGGING_RULES=kwin_*.debug=true
+        systemctl --user set-environment "QT_LOGGING_RULES=kwin_*.debug=true;js.debug=true;qml.debug=true"
         ```
     2. Log out and back into your Plasma session to apply.
 - **"spectacle command is missing"**:

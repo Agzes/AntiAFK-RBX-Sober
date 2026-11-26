@@ -30,7 +30,7 @@
 
 ## > Supported desktops
 
-Detailed setup and troubleshooting guides are available in the [**docs/**](docs/README.md) directory:
+Detailed setup, troubleshooting guides, and the [**Compatibility Table**](docs/README.md#compatibility-table) are available in the [**docs/**](docs/README.md) directory:
 
 | Desktop                          | Session Type | Input Method                | Hide Game        | Auto Reconnect        | FPS Capper |
 | :------------------------------- | :----------- | :-------------------------- | :--------------- | :-------------------- | :--------- |

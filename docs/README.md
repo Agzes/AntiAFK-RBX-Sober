@@ -22,6 +22,34 @@ Detailed compositor-specific setup, requirements, and troubleshooting guides:
 
 ---
 
+## Compatibility Table
+
+- ✅ - Confirmed working
+- 🔧 - Known issue, waiting for a fix
+- ❓ - Untested (or fix included, awaiting confirmation)
+- ⚠️ - Partial support / known limitation
+
+| Distro \ DE                  | Hyprland | KDE Plasma 6 | GNOME | Niri | COSMIC | X11 | i3  |
+| :--------------------------- | :------: | :----------: | :---: | :--: | :----: | :-: | :-: |
+| **CachyOS**                  |    ✅    |      ✅      |  ✅   |  ✅  |  ✅\*  | ✅  | ✅  |
+| **Arch Linux / EndeavourOS** |    ❓    |      ❓      |  ❓   |  ❓  |   ❓   | ❓  | ❓  |
+| **Fedora Workstation**       |    ❓    |      ❓      |  ❓   |  ❓  |   ❓   | ❓  | ❓  |
+| **Bazzite**                  |    ❓    |      ❓      |  ❓   |  ❓  |   ❓   | ❓  | ❓  |
+| **Nobara**                   |    ❓    |      ❓      |  ❓   |  ❓  |   ❓   | ❓  | ❓  |
+| **Ubuntu / Debian**          |    ❓    |      ❓      |  ❓   |  ❓  |   ❓   | ❓  | ❓  |
+| **Pop!\_OS**                 |    ❓    |      ❓      |  ❓   |  ❓  |   ❓   | ❓  | ❓  |
+| **openSUSE**                 |    ❓    |      ❓      |  ❓   |  ❓  |   ❓   | ❓  | ❓  |
+| **NixOS**                    |    ❓    |      ❓      |  ❓   |  ❓  |   ❓   | ❓  | ❓  |
+
+\* _FPS Capper is intentionally disabled on COSMIC because `CPUQuota` throttling causes `cosmic-comp` to terminate Sober._
+
+> [!NOTE]
+> Support status may change over time as distributions, compositors, and Sober receive updates (including regressions). On **CachyOS**, all listed desktops are fully tested on **v1.0.0**.
+>
+> If something does not work on your setup, please open a [Bug Report](https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=bug_report.yml) or submit a [Compatibility Report](https://github.com/Agzes/AntiAFK-RBX-Sober/issues/new?template=compatibility_report.yml) to update the table.
+
+---
+
 ## Feature Overview & Architecture
 
 ### 1. Anti-AFK Actions & Intervals

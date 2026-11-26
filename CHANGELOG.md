@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **KDE Plasma 6 (Wayland)**: KWin scripts now report window queries over D-Bus instead of relying on the `kwin_scripting` journal category, so AntiAFK works on Bazzite, Nobara and systems where KWin logging is disabled. Journal output remains as a fallback.
+- **KDE Plasma 6**: `qdbus6`/`qdbus` is now also found in standard Qt 6 tool directories (for example `/usr/lib64/qt6/bin`), fixing AppImages and RPM-based distributions where the tool is outside `PATH`.
+- **GNOME (Wayland)**: pointer warping works on GNOME 51+ by using `global.stage.context.get_backend()` in the bundled extension, with an absolute `/dev/uinput` pointer fallback for already-installed older extensions.
+- **Diagnostics**: FPS Throttle now reports `Idle`, `Waiting` or `Unlocked` instead of the misleading `Unavailable` when throttling is simply not active.
+
+---
+
 ## [1.0.0] Universal Desktop & Native Integration - 2026-10-04
 
 ### Added

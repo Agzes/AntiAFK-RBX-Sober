@@ -69,8 +69,9 @@ The extension exports the `dev.agzes.antiafk.Backend` interface at `/dev/agzes/a
 
 - `ListWindows()`: queries Mutter's `global.get_window_actors()`, returning JSON metadata for all windows (id, class, title, geometry, active state).
 - `FocusWindow(id)`: activates the target window using Mutter's `activate(global.get_current_time())`.
-- `GetCursorPosition()`: returns the exact global pointer coordinates `(x, y)`.
-- `WarpPointer(x, y)`: sets the pointer position via Clutter's pointer actor.
+- `PointerPosition()`: returns the exact global pointer coordinates `(x, y)`.
+- `ScreenSize()`: returns the logical stage size, used by the pointer fallback.
+- `WarpPointer(x, y)`: sets the pointer position via Clutter's pointer seat. On GNOME 51+ the extension uses `global.stage.context.get_backend()` because `Clutter.get_default_backend()` was removed.
 - `SetMinimized(id, bool)`: minimizes or unminimizes windows.
 - `CaptureWindowToFile(id, filepath)`: captures window pixels using native `Shell.Screenshot.screenshot_area` into a `Gio.FileStream`, bypassing deprecated external screenshot APIs.
 
@@ -81,8 +82,9 @@ The extension exports the `dev.agzes.antiafk.Backend` interface at `/dev/agzes/a
 
 ### 3. Cursor Preservation & User Safety
 
-- Before switching windows, AntiAFK captures current pointer coordinates via `GetCursorPosition()`.
+- Before switching windows, AntiAFK captures current pointer coordinates via `PointerPosition()`.
 - After sending actions, the pointer is restored via `WarpPointer()`.
+- If the installed extension cannot warp the pointer (for example an older extension on a newer GNOME Shell), AntiAFK falls back to an absolute `/dev/uinput` pointer device. Reinstall the extension from Diagnostics to use the native path again.
 - **User Safety ("Don't Interrupt Me")**: Dual-check combining kernel `evdev` listening on `/dev/input/event*` with cursor delta tracking from the extension. Automation pauses for 3 seconds whenever input is detected.
 
 ### 4. Hide Game (Stealth Mode)
@@ -122,6 +124,8 @@ Under the **Diagnostics** tab in AntiAFK:
   Enable the extension via `gnome-extensions enable antiafk-rbx-sober@agzes.github.io` or the Extensions app.
 - **"GNOME Extension: Not active / D-Bus error"**:
   Make sure you logged out and back in after the initial installation.
+- **"GNOME helper rejected the pointer request"**:
+  Update the bundled extension (Diagnostics → **Reinstall**) and log out and back in. AntiAFK also falls back to `/dev/uinput` pointer movement automatically, so window activation and actions keep working even before the extension is updated.
 - **Forced Backend Selection**:
     ```bash
     AntiAFK-RBX-Sober --force-desktop gnome
